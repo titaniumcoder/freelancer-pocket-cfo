@@ -3,59 +3,297 @@
 - **Status:** Accepted
 - **Date:** 2026-10-21
 - **Deciders:** Rico Metzger (founder)
-- **Supersedes:** —
+- **Supersedes:** docs/technology-proposal.md (absorbed here in full; file removed)
 - **Superseded by:** —
+
+This ADR is self-contained: it carries the full analysis, evaluation and decision.
+The former technology proposal document is absorbed below and no longer exists as a
+separate file.
 
 ## Context
 
-The rewrite of pocket-cfo is a solo-founder, multi-tenant B2B SaaS whose main channel is
-a WhatsApp chatbot with a zero-data-retention LLM arrangement, backed by a relational
-domain model (invoices, payment state, budget windows, actuals) with EU-first data
-privacy. The full constraint analysis is in
-[docs/technology-proposal.md](../technology-proposal.md); its weighted evaluation scored
-five candidate stacks and found no remaining blocker for the Elixir option after the
-founder withdrew the LLM-codegen concern and corrected the simplicity rating.
+Solo-founder SaaS, written by [Rico Metzger](https://titaniumcoder.com). Profile summary
+relevant to this decision:
 
-The requirements that shaped this decision, in priority order: multi-tenancy that is
-safe by construction (isolation below the application layer), WhatsApp webhook
-ingestion with idempotent message processing and background jobs as first-class product
-machinery, realtime updates from the WhatsApp channel into the app (the founder ↔
-accountant live-update scenario is the demo moment), one-person ops, and synergy with
-AI coding tools.
+- Strongest historical stack: **Java/Kotlin/Scala with Spring Boot**, Kafka, Kubernetes —
+  all enterprise-scale, 5★, but used in employer contexts, not solo products.
+- Recent momentum (2026): two **Elixir/Phoenix** projects (a Phoenix LiveView legacy
+  migration with 321 tests; an agent-coordination platform) and the pocket-cfo rewrite
+  candidate itself was a solo **Go** product.
+- Frontend: Angular/React 4★, Svelte/Vue 3★ — capable, not passionate.
+- Postgres 5★; agentic tooling and LLM integration deep and current.
 
-## Decision
+### Requirements derived from the plan
 
-**Elixir + Phoenix + LiveView + PostgreSQL** is the project's technology stack.
+In rough priority order — the product's shape, not the implementer's preferences:
 
-Rejected alternatives (from docs/technology-proposal.md, weighted scores 2026-10):
+1. **Multi-tenant SaaS, safe by construction.** Tenancy isolation must be enforced below
+   the application layer: a forgotten `WHERE tenant_id = …` must not be able to leak
+   another tenant's data.
+2. **WhatsApp Business channel is the main channel.** Registration and daily interaction
+   happen through WhatsApp (Meta Cloud API webhooks); the chatbot is the selling feature.
+   This means: reliable webhook ingestion, idempotent message processing, background
+   jobs, and a conversational AI integration — all first-class product machinery.
+3. **Chatbot with ZDR.** LLM calls under a zero-data-retention arrangement; the LLM
+   integration sits behind a provider-agnostic abstraction.
+4. **Stricter B2B rules, bigger data-privacy focus.** EU data residency as the default;
+   every third-party dependency that can see tenant data must be justified.
+5. **Database is the main channel.** A relational model fits the domain (invoices,
+   payment state, budget windows, actuals — the original's schemas were all shapes of
+   this); auditability and revertibility are re-created in the database (append-only
+   change logs, never-edit-issued-invoices invariants).
+6. **Abstractions for time tracking and invoicing** (and legislations, export targets).
+7. **SSO** — OIDC/OAuth2 (GitHub, others), B2B SAML later.
+8. **Solo founder.** Iteration speed, one-person ops, low total moving-parts count, and
+   synergy with AI coding tools weigh more than hyperscale read throughput. A finance
+   SaaS for freelancers will be latency-tolerant and never Twitter-scale.
 
-- **Kotlin + Spring Boot 4 (never Java)** — ≈ 3.9. Deepest founder experience and now a
-  superb LLM/agent story (Spring AI 2.0 GA, MCP starters), but the admin surface becomes
-  a second frontend build with a second language, and it has no realtime backbone for
-  the WhatsApp → app story.
-- **Go + HTMX (server-rendered)** — ≈ 3.7 overall / ≈ 4.0 weighted stack fit, the safe
-  runner-up with the continuity argument (pocket-cfo's battle-tested domain code).
-  Structurally loses the realtime criterion; webhook UI, jobs, and chat streaming would
-  all be hand-built.
-- **TypeScript (TanStack Start / SvelteKit)** — ≈ 3.6. Best LLM-tooling ecosystem, but
-  no background-job story at all (external worker required) and WebSockets remain in
-  limbo in SvelteKit — critical gaps for a webhook-first chat product.
-- **Scala + ZIO/http4s** — dropped by founder decision (2026-10): fading language, not
-  worth keeping alive.
+## Evaluation criteria and weights
 
-The accepted trade-off: Elixir's hiring pool is small and expensive, so onboarding a
-future second developer will cost more than on a JVM or TS stack. Accepted for a
-solo-founder start; to be revisited if/when hiring begins.
+| Criterion | Weight | Rationale |
+|---|---|---|
+| Solo iteration speed & ops burden | 25% | One person; every moving part is a liability |
+| Product fit (webhooks, chat, jobs, admin UI) | 20% | WhatsApp-first product machinery must be first-class |
+| Profile fit & velocity now | 20% | Recent, current practice — not résumé depth |
+| Safety-by-construction support | 15% | Tenancy isolation, typing discipline for money |
+| Ecosystem maturity for this domain | 10% | OIDC/SAML, PDF, LLM SDKs, integrations |
+| Longevity & maintainability | 10% | The product should outlive fashion |
 
 ## Options considered
 
-| Option | Verdict | Why |
-|---|---|---|
-| Elixir + Phoenix + LiveView + PostgreSQL | **Accepted** | Product machinery (webhook reliability, Oban jobs, PubSub/LiveView realtime) is in the stack's bones; one language, one deployable, one VM; founder's freshest daily practice; Elixir 1.19 gradual set-theoretic types close the money-math typing gap; Tidewave gives the coding agent a runtime-inside view no other stack has |
-| Kotlin + Spring Boot 4 | Rejected | Two deployables / two languages for one solo founder; no realtime backbone; strongest only on ecosystem and résumé depth |
-| Go + HTMX | Rejected (runner-up) | Everything product-critical hand-built; HTMX painful for WS/SSE; kept as the continuity fallback |
-| TypeScript (TanStack Start / SvelteKit) | Rejected | No jobs story, WS in limbo, npm churn tax |
-| Scala + ZIO/http4s | Rejected | Fading language; maintenance liability |
+### A. Elixir + Phoenix (+ LiveView) + PostgreSQL — **accepted**
+
+- **Profile fit & velocity (4.5/5):** current daily practice; two 2026 projects; the
+  dBase migration proved disciplined delivery with tests. Not the 5★ of Spring, but the
+  freshest hand.
+- **Product fit (5/5):** Phoenix is arguably the best HTTP/webhook server in any
+  language (Bulletproof connection handling, supervision trees restart failed webhook
+  handlers without dropping the server); Oban is best-in-class Postgres-backed job
+  processing (retention/retries/queues — exactly what idempotent WhatsApp message
+  processing needs); LiveView removes the entire SPA stack for the admin/web surface —
+  one person ships interactive UI at backend speed; Phoenix channels for realtime.
+- **Safety by construction (4.5/5):** immutability by default, pattern matching on message
+  shapes, `with` pipelines; Postgres RLS for tenancy (see cross-cutting); no nulls.
+  The former dynamic-typing weakness is being patched by the language itself: **Elixir
+  1.19 (October 2025) ships gradual set-theoretic types in the compiler** — sound and
+  gradual, with an explicit `dynamic()` escape hatch, type checking of anonymous
+  functions and of protocol dispatch, and up to 4× faster compilation. For a finance
+  product this is the right trajectory: the type system will catch money-math mistakes
+  the compiler previously ignored, and it is delivered by the language, not by bolting
+  on a third-party type layer.
+- **Solo ops (5/5):** one BEAM binary, one Postgres, one VM. No node_modules, no build
+  pipeline zoo, releases are self-contained. The original repo's AGENTS.md
+  "stdlib-first" instinct maps to Phoenix's batteries-included philosophy.
+- **Ecosystem (3.5/5):** Assent (OIDC incl. GitHub/Google), Ecto, OpenAI/Anthropic HTTP
+  clients trivial (raw HTTP is idiomatic here); WhatsApp has only community SDKs —
+  irrelevant since the Cloud API is plain HTTPS webhooks. PDF: shell out to Typst.
+  SAML: weaker than JVM.
+- **Longevity (4/5):** Erlang/OTP stability measured in decades; hiring pool small but
+  the founder *is* the hiring pool.
+- **Weighted score: ≈ 4.5**
+- **Founder additions (2026-10, decision discussion):**
+  - **Tidewave.** An MCP server with runtime-level tools for Phoenix: the coding agent
+    sees the *running* app — precise framework traces, browser evaluation, LiveView
+    diagnostics, in-browser agent (active project, v0.9.x as of September 2026). The
+    founder uses and loves it in coding sessions. No other candidate stack has an
+    equivalent: this is a real development-experience moat for Option A.
+  - **Realtime updates, WhatsApp → app.** Phoenix PubSub + LiveView make the
+    founder's scenario a one-liner of architecture: a message arrives via the WhatsApp
+    webhook, the chatbot updates the database, and every open LiveView (the founder's,
+    the accountant's browser) re-renders *live*. Accountant says something on the
+    phone, founder fixes it in the app, accountant watches it update — no refresh, no
+    polling, no extra realtime stack. In every other candidate this is hand-built.
+  - **Negative — second developer.** The Elixir hiring pool is small and
+    expensive; onboarding a future second developer onto Phoenix/OTP will be harder
+    and costlier than onto JVM or TS stacks. Accepted trade-off for a solo-founder
+    start; revisit if/when hiring.
+  - **Open risk — closed.** The earlier concern about LLM code-gen quality for Elixir
+    (corpus skew towards mainstream languages) is **rejected by the founder**: the
+    Elixir ecosystem was among the first to fully embrace LLM-assisted development, and
+    Tidewave — runtime-level MCP tools, the agent sees the app from *inside*, not
+    outside — is rated by the founder as one of the best projects in this space precisely
+    because it eliminates the debugging loop. The 2026-10 evaluation spike is downgraded
+    from a decision gate to an optional sanity check.
+
+### B. Kotlin + Spring Boot 4 + PostgreSQL + React/Angular — rejected
+
+**Founder constraint (2026-10, critical):** this candidate was **Kotlin, never Java**.
+If the JVM won at all, it would win as Kotlin. Rationale: the founder's LLM assessment —
+the Java training corpus is showing its age for AI-assisted work, while Kotlin's corpus
+is large (Android-driven), current, and K2-native — and the founder's clear preference.
+Spring Boot 4 makes this clean: it rebased on a **Kotlin 2.2 baseline** with K2 compiler
+support, ships a first-class `kotlinx-serialization` starter, and the Spring AI 2.0
+surfaces (chatbot, MCP server starters, annotations) are usable idiomatically from
+Kotlin. Java interop remains a safety net, not the working mode.
+
+- **Profile fit (5/5):** the 5★ core stack in its preferred dialect, certified, deepest
+  experience; and the founder's question — "aren't we on Spring Boot 4 now?" — is
+  right, and it matters: **Spring AI 2.0 went GA in June 2026** with dedicated MCP
+  Server Boot Starters and MCP annotations. The AI/agent story that used to be the JVM's
+  weak spot is now first-class and superbly documented. The runtime LLM integration
+  (chatbot, MCP surface) would be *easier* here than anywhere else.
+- **Product fit (3/5):** everything exists (Spring Security OAuth2 is superb, webhooks
+  fine, Spring AI 2.0 for the chatbot) but the UI story is unchanged: the admin portal
+  becomes a second frontend build with a second language, doubling the solo surface.
+  The realtime WhatsApp → app scenario needs extra machinery (WebSocket/SSE wiring or
+  an added realtime layer) where Phoenix has it in its bones.
+- **Safety by construction (4/5):** strong typing, but nullable-by-default legacy of the
+  platform; RLS equally available.
+- **Solo ops (2.5/5):** JVM memory, Kubernetes muscle memory pulls toward infra weight;
+  two deployables (API + SPA) minimum; iteration slower per feature.
+- **Ecosystem (5/5):** unmatched — now explicitly including the LLM/agent axis
+  (Spring AI 2.0 GA, MCP starters, MCP Java SDK — consumed from Kotlin; Android-scale
+  Kotlin corpus for AI-assisted coding).
+- **Longevity (5/5):** enterprise-forever.
+- **Weighted score: ≈ 3.9** (LLM-support gains bought by the update, solo-ops and
+  two-surface costs unchanged)
+
+### C. Go + server-rendered HTML (HTMX) + PostgreSQL — rejected (runner-up)
+
+- **Profile fit (4.5/5):** pocket-cfo proves solo delivery end-to-end; the domain model
+  (budget windows, actuals, invoice immutability) is already battle-tested in Go.
+- **Product fit (3/5):** `net/http` is excellent for webhooks; River (Postgres jobs) and
+  go-oidc are solid; but interactive admin UI, realtime, and chat streaming are all
+  hand-built. Everything in the original was hand-built too — that was its charm and
+  its cost.
+- **Safety by construction (4.5/5):** explicit errors, no nulls, single binary;
+  interface-based abstractions for time tracking/invoicing natural.
+- **Solo ops (4.5/5):** cross-compiled static binary, trivial deploys.
+- **Ecosystem (4/5):** all necessities exist, batteries not included.
+- **Longevity (4.5/5):** Google-stable, minimal churn.
+- **Weighted score: ≈ 4.0** — the runner-up, and the continuity argument (reuse of
+  pocket-cfo's domain logic and the non-vibecoded discipline) is real. Nothing discovered
+  in the 2026-10 re-examination moved it; "safe runner-up" stood.
+
+### D. TypeScript — rejected (narrowed to TanStack Start vs SvelteKit)
+
+The founder narrowed the framework field to two: **TanStack Start** or **SvelteKit**
+(personal lean: SvelteKit). Next.js, Remix/RR7, Hono and NestJS were dropped from the
+shortlist.
+
+SvelteKit backend status (checked October 2026, relevant to a chat-first product):
+
+- **Solid:** SvelteKit 3.0 (October 2026), `adapter-node` for HTTP/SSR, server routes,
+  form actions; and the new **remote-query APIs with `.live(...)`** (June 2026) give
+  server-driven realtime data updates out of the box — a genuine improvement for the
+  app-push story.
+- **Weak for this product:** **WebSockets remain in limbo** — no built-in WS server,
+  the team explicitly deferred it past the Kit 3 release (August 2026), SSE is the
+  recommended path meanwhile; a WS endpoint means wrapping `adapter-node`'s handler in
+  a custom server. **No background-job story at all** — webhook ingestion, retries and
+  idempotent message processing need an external worker (BullMQ et al.). For a
+  WhatsApp-webhook-first product the jobs gap matters more than the WS gap, and it is
+  the same gap every Node backend carries.
+
+### E. Scala + ZIO/http4s + PostgreSQL — rejected (dropped outright)
+
+Dropped by founder decision (2026-10): the language is fading and the project will not
+spend effort keeping it alive. Recorded for completeness.
+
+## Comparison table (2026-10, corrected)
+
+Stack fit reuses the weighted score from the criteria above. All criteria 1–5, **higher
+is better** (this corrects the 2026-10-21 draft, which inverted the complexity row — the
+corrected criterion is *simplicity*). LLM support covers both AI-assisted development
+and the runtime chatbot/agent story. Simplicity means few moving parts and low solo
+setup pain.
+
+| Criterion | A: Elixir/Phoenix | B: Kotlin/Spring 4 | C: Go/HTMX | D: TypeScript (TanStack or SvelteKit) |
+|---|---|---|---|---|
+| Stack fit for founder (weighted) | **4.5** | 3.9 | 4.0 | 3.5 |
+| Onboarding a 2nd developer | 2.5 — small, expensive pool | **5** — largest enterprise pool | 4 — big pool, boring stack | 4.5 — biggest pool overall |
+| LLM support (AI coding + runtime) | **4.5** — early-adopter ecosystem; Tidewave's inside-the-runtime view eliminates the debugging loop (founder assessment) | 4.5 — huge corpus + Spring AI 2.0/MCP | 4 — huge corpus, thin agent tooling | **5** — SDKs and corpora first-class |
+| Simplicity (fewer moving parts, less setup pain) | **5** — one language, one surface, one VM; major-version upgrades are the single rough edge, and upgrade guidance is now itself LLM-written (founder: 5, maybe 4.5) | 2.5 — framework weight + SPA second build | 4 — few parts, but machinery hand-built | 3 — SvelteKit setup painless enough; npm churn standing tax |
+| Realtime WhatsApp → app story | **5** — PubSub/LiveView in the bones | 2 — extra wiring; no realtime backbone | 2 — HTMX is painful for WS/SSE despite the docs; the founder would have to reach for a different stack for this one requirement | 3.5 — SvelteKit: SSE + `.live(...)` good, WS in limbo |
+| **Overall** | **4.5** | 3.8 | 3.7 | 3.6 |
+
+Read as: the realtime criterion separates the field sharply — it is a *product*
+requirement (the WhatsApp channel is the selling feature, and live updates between
+founder and accountant are the demo moment), not a nice-to-have. Option A wins it by
+construction; B and C lose it structurally (no realtime backbone; HTMX would have to be
+abandoned for that requirement). With the LLM concern withdrawn by the founder and
+simplicity correctly rated, **no real blocker remained for Option A** — the one standing
+bounded risk is the 2nd-developer cost, accepted until hiring day.
+
+## Decision
+
+**Elixir + Phoenix + LiveView + PostgreSQL**, with **Go + HTMX** as the serious
+runner-up (the continuity fallback if product-machinery ever matters less than domain-code
+reuse).
+
+The deciding arguments:
+
+1. **The product is a chat product with a finance backend, not the reverse.** Webhook
+   reliability, job processing, and realtime UI are the core; Phoenix is the stack where
+   those are not add-ons.
+2. **One language, one deployable, one VM.** LiveView deletes the SPA question entirely
+   for a solo founder — the admin portal, tenant dashboard and settings UI ship at
+   backend speed with zero second-stack maintenance.
+3. **Current practice beats résumé depth.** Spring is the deepest tool in the box, but
+   the last two years of solo delivery ran through Elixir and Go; the freshest, most
+   AI-tooling-synergistic hand is the Elixir one.
+
+Accepted trade-off: Elixir's hiring pool is small and expensive, so onboarding a future
+second developer will cost more than on a JVM or TS stack. Accepted for a solo-founder
+start; to be revisited if/when hiring begins.
+
+## Cross-cutting decisions (mostly stack-independent, rated)
+
+These are recommended targets that hold for A and C alike; they become ADR-0002+.
+
+### Database: PostgreSQL with Row-Level Security tenancy — recommended
+
+Three models, rated against "safe by construction":
+
+| Model | Isolation strength | Solo-ops cost | Verdict |
+|---|---|---|---|
+| Shared schema, `tenant_id` + **RLS enforced on every table** | Highest: even a query that forgot the tenant predicate cannot cross tenants; the app sets the tenant per transaction/session and RLS refuses the rest | Low | **Recommended** |
+| Schema-per-tenant | High but migration sprawl grows linearly with tenants; N schemas × M migrations | Medium | Rejected |
+| Database-per-tenant | Strongest blast radius, but connection/migration/backups × tenants; SaaS-grade bookkeeping burden | High | Rejected for now; escape hatch if a large B2B tenant demands it |
+
+RLS alone is not the whole story: the app connects as a role that *cannot* bypass RLS
+(`FORCE ROW LEVEL SECURITY`), sets `SET LOCAL app.tenant_id` per transaction, and has no
+superuser credentials in production. Then tenancy is structural, matching README.md's
+"cross-tenant access must be structurally impossible, not merely forbidden".
+
+### Hosting: EU-first, boring, few moving parts — recommended: Fly.io or Hetzner
+
+| Option | Privacy posture | Solo-ops | Verdict |
+|---|---|---|---|
+| **Fly.io (EU region)** | EU regions, app-level control | Low — app + managed Postgres in one platform | **Recommended default** |
+| **Hetzner + Docker + managed Postgres (or self-hosted)** | Data center in DE/FI, cheapest | Medium — one more thing to run, maximum sovereignty | **Recommended alternative** |
+| AWS/GCP + Kubernetes | Fine, EU regions | High — k8s is 5★ experience but solo-SaaS overkill | Rejected for now |
+| US-first PaaS (Vercel/Railway) | Residency negotiable, not guaranteed | Low | Rejected on criterion 4 |
+
+### Auth/SSO: in-stack OIDC now, dedicated IdP when B2B demands SAML
+
+| Option | Fit now | Fit at B2B-SAML time | Verdict |
+|---|---|---|---|
+| In-stack OIDC (Assent / go-oidc) for GitHub, Google, email | Zero extra infrastructure, no third party sees tenant data | SAML later = real work | **Recommended start** |
+| Zitadel (self-hosted, EU) | One more service to run | Full OIDC/SAML B2B, EU-native | Recommended upgrade path |
+| WorkOS / Auth0 / Keycloak | Fast SAML | WorkOS = US processor (privacy trade-off); Keycloak = ops weight | Deferred; revisit at first B2B SAML customer |
+
+### WhatsApp Business: Meta Cloud API direct
+
+Direct Cloud API integration (plain HTTPS webhooks) beats BSP middlemen (Twilio,
+360dialog) on both privacy (one fewer data processor; BSP is a fallback for number
+provisioning problems) and ZDR simplicity. The message-processing layer must be
+idempotent (webhook redelivery is guaranteed) — Oban/River-style jobs handle that.
+
+### Chatbot / LLM: provider-agnostic adapter + contractual ZDR
+
+The ZDR property is contractual and per-provider, not architectural; the architecture
+contribution is the adapter boundary (one module defines the chatbot's LLM interface).
+Candidates, all offering no-training/ZDR arrangements under appropriate agreements:
+Azure OpenAI (EU residency, strongest paper trail), Anthropic API (no training on API
+data by default), OpenAI API with ZDR terms, or a router (OpenRouter) with ZDR-modeled
+providers. Decision deferred to an LLM-specific ADR; the stack decision does not depend
+on it.
+
+### PDF generation: Typst (deterministic, versioned input)
+
+Invoice PDFs rendered from declarative templates by a pinned Typst binary —
+reproducible, no headless-browser ops burden. Same reasoning for any language choice.
 
 ## Consequences
 
@@ -66,9 +304,17 @@ solo-founder start; to be revisited if/when hiring begins.
 - **Harder:** smaller, costlier talent pool if a second developer is hired; major-version
   Elixir upgrades are the one standing rough edge (mitigated by LLM-written upgrade
   guidance and the 1.19 type trajectory).
-- **Neutral / deferred:** cross-cutting decisions (Postgres RLS tenancy, EU-first
-  hosting, in-stack OIDC, Meta Cloud API direct, ZDR LLM adapter, Typst PDF) are
-  recommended in the technology proposal and become their own ADRs (0002+); an optional
-  bounded Elixir tooling spike (Claude Code + Tidewave) remains a confidence-building
-  sanity check, not a gate. Repository scaffolding — the first code — starts only after
-  the follow-up ADRs land.
+- **Neutral / deferred:** the cross-cutting recommendations above become their own ADRs
+  (0002+); an optional bounded Elixir tooling spike (Claude Code + Tidewave) remains a
+  confidence-building sanity check, not a gate. Repository scaffolding — the first
+  code — starts only after the follow-up ADRs land.
+
+## Next steps
+
+1. Follow-up ADRs (0002+): multi-tenancy model (RLS), auth/SSO, WhatsApp integration,
+   LLM/ZDR adapter, hosting.
+2. Optionally: a bounded Elixir tooling spike (Claude Code + Tidewave) as a
+   confidence-building sanity check — downgraded from a decision gate by founder
+   assessment.
+3. Only then: repository scaffolding — the first code arrives after the ADRs, not
+   before.
