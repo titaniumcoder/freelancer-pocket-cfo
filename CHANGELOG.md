@@ -9,6 +9,10 @@ breaking changes as well, marked **Breaking** below.
 
 ## [Unreleased]
 
+- AGENT.md working agreement extended: merging a PR is a founder action — the agent
+  never merges on its own initiative; during the architecture phase one standing PR
+  stays open until the phase is finished.
+
 - Technology proposal (docs/technology-proposal.md): five candidate stacks rated against
   the plan's constraints (WhatsApp-first product, multi-tenant safety by construction,
   solo-founder ops, B2B privacy); recommendation Elixir + Phoenix + LiveView + PostgreSQL
