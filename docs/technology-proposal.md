@@ -102,11 +102,13 @@ In rough priority order — the product's shape, not the implementer's preferenc
     expensive; onboarding a future second developer onto Phoenix/OTP will be harder
     and costlier than onto JVM or TS stacks. Accepted trade-off for a solo-founder
     start; revisit if/when hiring.
-  - **Open — LLM code-gen quality for Elixir.** LLM training corpora skew towards
-    mainstream languages (TS, Java, Python); Elixir assistance quality is plausibly
-    weaker and must be *evaluated*, not assumed — a small spike (build a slice of the
-    domain with Claude Code / Tidewave and judge) belongs in the decision follow-ups.
-    Tidewave mitigates on the runtime/feedback side regardless.
+  - **Open risk — closed.** The earlier concern about LLM code-gen quality for Elixir
+    (corpus skew towards mainstream languages) is **rejected by the founder**: the
+    Elixir ecosystem was among the first to fully embrace LLM-assisted development, and
+    Tidewave — runtime-level MCP tools, the agent sees the app from *inside*, not
+    outside — is rated by the founder as one of the best projects in this space precisely
+    because it eliminates the debugging loop. The 2026-10 evaluation spike is downgraded
+    from a decision gate to an optional sanity check.
 
 ### B. Kotlin + Spring Boot 4 + PostgreSQL + React/Angular — Kotlin only, Java excluded
 
@@ -158,26 +160,25 @@ Kotlin. Java interop remains a safety net, not the working mode.
   pocket-cfo's domain logic and the non-vibecoded discipline) is real. Nothing discovered
   in the 2026-10 re-examination moved it; "safe runner-up" stands.
 
-### D. TypeScript — framework under investigation
+### D. TypeScript — narrowed to TanStack Start vs SvelteKit
 
-The language is rated a good one by the founder; the prior framing (Next.js + Prisma)
-was rejected by the founder outright — "Next.js is a disaster" and the Vercel coupling
-is a vendor-lock concern. The *investigation* is therefore narrower: which
-**vendor-lock-free TypeScript full-stack setups** exist, and can one avoid the setup
-pain the founder dreads? Shortlist for that investigation:
+The founder narrows the framework field to two: **TanStack Start** or **SvelteKit**
+(personal lean: SvelteKit). Next.js, Remix/RR7, Hono and NestJS are dropped from the
+shortlist.
 
-- **TanStack Start** — Vite-based, self-hostable anywhere, React Server Components
-  without Next.js; young but backed by the TanStack ecosystem.
-- **Remix / React Router v7 (framework mode)** — batteries-included full-stack React,
-  deploys to any Node/Deno/Bun host; the most "no setup pain" React option.
-- **Hono (backend) + Vite + React SPA** — runtime-agnostic, minimal, deploy-anywhere;
-  but the setup is hand-rolled, which collides with the founder's setup-pain aversion.
-- **NestJS (backend) + Vite SPA** — Angular-style structure the founder knows;
-  batteries included, but heavier and the SPA remains a second surface.
+SvelteKit backend status (checked October 2026, relevant to a chat-first product):
 
-None of these changes the fundamental ratings: the finance-safety concern and the
-client/server boundary discipline are language-runtime properties, not framework ones.
-Re-estimate after the framework investigation.
+- **Solid:** SvelteKit 3.0 (October 2026), `adapter-node` for HTTP/SSR, server routes,
+  form actions; and the new **remote-query APIs with `.live(...)`** (June 2026) give
+  server-driven realtime data updates out of the box — a genuine improvement for the
+  app-push story.
+- **Weak for this product:** **WebSockets remain in limbo** — no built-in WS server,
+  the team explicitly deferred it past the Kit 3 release (August 2026), SSE is the
+  recommended path meanwhile; a WS endpoint means wrapping `adapter-node`'s handler in
+  a custom server. **No background-job story at all** — webhook ingestion, retries and
+  idempotent message processing need an external worker (BullMQ et al.). For a
+  WhatsApp-webhook-first product the jobs gap matters more than the WS gap, and it is
+  the same gap every Node backend carries.
 
 ### D. TypeScript — Next.js (or NestJS) + Prisma + PostgreSQL
 
@@ -195,27 +196,29 @@ Re-estimate after the framework investigation.
 Dropped by founder decision (2026-10): the language is fading and the project will not
 spend effort keeping it alive. Kept here for the record only.
 
-## Comparison table (2026-10 re-examination)
+## Comparison table (2026-10, corrected)
 
-Stack fit reuses the proposal's weighted score. Onboarding a second developer, LLM
-support (both AI-assisted coding *and* the runtime chatbot/agent story), and complexity
-(running parts × solo setup pain) are rated 1–5, higher is better. **Overall** folds the
-new criteria into the founder's decision lens.
+Stack fit reuses the proposal's weighted score. All criteria 1–5, **higher is better**
+(this corrects the 2026-10-21 draft, which inverted the complexity row — the corrected
+criterion is *simplicity*). LLM support covers both AI-assisted development and the
+runtime chatbot/agent story. Simplicity means few moving parts and low solo setup pain.
 
-| Criterion | A: Elixir/Phoenix | B: Kotlin/Spring 4 | C: Go/HTMX | D: TypeScript |
+| Criterion | A: Elixir/Phoenix | B: Kotlin/Spring 4 | C: Go/HTMX | D: TypeScript (TanStack or SvelteKit) |
 |---|---|---|---|---|
-| Stack fit for founder (weighted) | **4.5** | 3.9 | 4.0 | 3.5 (pending framework pick) |
+| Stack fit for founder (weighted) | **4.5** | 3.9 | 4.0 | 3.5 |
 | Onboarding a 2nd developer | 2.5 — small, expensive pool | **5** — largest enterprise pool | 4 — big pool, boring stack | 4.5 — biggest pool overall |
-| LLM support (AI coding + runtime) | 3.5 — code-gen corpus weaker, **needs evaluation**; Tidewave mitigates runtime-side | **4.5** — huge corpus + Spring AI 2.0/MCP | 4 — huge corpus, thin agent tooling | **5** — SDKs and corpora first-class |
-| Complexity (moving parts, setup pain) | 2 — one language, one surface, one VM | 3 — framework weight + SPA second build | 2 — few parts, but machinery hand-built | 3 — setup pain real; npm churn standing tax |
-| Realtime WhatsApp → app story | **5** — PubSub/LiveView in the bones | 3 — extra wiring | 3 — hand-built | 3.5 — framework-dependent |
-| **Overall** | **4.2** | 3.9 | 4.0 | 3.6 |
+| LLM support (AI coding + runtime) | **4.5** — early-adopter ecosystem; Tidewave's inside-the-runtime view eliminates the debugging loop (founder assessment) | 4.5 — huge corpus + Spring AI 2.0/MCP | 4 — huge corpus, thin agent tooling | **5** — SDKs and corpora first-class |
+| Simplicity (fewer moving parts, less setup pain) | **5** — one language, one surface, one VM; major-version upgrades are the single rough edge, and upgrade guidance is now itself LLM-written (founder: 5, maybe 4.5) | 2.5 — framework weight + SPA second build | 4 — few parts, but machinery hand-built | 3 — SvelteKit setup painless enough; npm churn standing tax |
+| Realtime WhatsApp → app story | **5** — PubSub/LiveView in the bones | 2 — extra wiring; no realtime backbone | 2 — HTMX is painful for WS/SSE despite the docs; the founder would have to reach for a different stack for this one requirement | 3.5 — SvelteKit: SSE + `.live(...)` good, WS in limbo |
+| **Overall** | **4.5** | 3.8 | 3.7 | 3.6 |
 
-Read as: the founder's gut (Elixir) has no *real blocker* in the table — the two open
-risks are explicit and bounded: the 2nd-developer cost (accepted for now, revisit at
-hiring) and the LLM-for-Elixir evaluation (a spike, scheduled before final commitment;
-a bad result does not sink the stack, it informs how much of the code is hand-written
-vs agent-generated).
+Read as: the realtime criterion separates the field sharply — it is a *product*
+requirement (the WhatsApp channel is the selling feature, and live updates between
+founder and accountant are the demo moment), not a nice-to-have. Option A wins it by
+construction; B and C lose it structurally (no realtime backbone; HTMX would have to be
+abandoned for that requirement). With the LLM concern withdrawn by the founder and
+simplicity correctly rated, **no real blocker remains for Option A** — the one standing
+bounded risk is the 2nd-developer cost, accepted until hiring day.
 
 ## Recommendation
 
@@ -302,8 +305,8 @@ reproducible, no headless-browser ops burden. Same reasoning for any language ch
    alternatives' reasons.
 2. Follow-up ADRs: multi-tenancy model (RLS), auth/SSO, WhatsApp integration, LLM/ZDR
    adapter, hosting.
-3. **LLM-for-Elixir evaluation spike** (before final commitment): build one bounded
-   slice of the domain (e.g. the budget-window module) with Claude Code + Tidewave on
-   Elixir, judge assistance quality honestly. A bad outcome does not sink the stack; it
-   sets the hand-written vs agent-generated mix.
+3. **LLM-for-Elixir spike — optional sanity check only** (downgraded from a decision
+   gate by founder assessment): if wanted, build one bounded slice of the domain with
+   Claude Code + Tidewave and confirm the tooling experience. The founder rates the
+   ecosystem's LLM support at 4.5 already; this is confidence-building, not gating.
 4. Only then: repository scaffolding — the first code arrives after the ADRs, not before.

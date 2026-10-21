@@ -22,6 +22,15 @@ breaking changes as well, marked **Breaking** below.
   TypeScript reframed as a vendor-lock-free framework investigation (TanStack Start,
   Remix/RR7, Hono, NestJS). New comparison table added; no real blocker found for the
   founder's Elixir-leaning gut decision.
+- Comparison table corrected after founder review: the complexity row had been
+  inverted — now expressed as *simplicity* (higher = fewer moving parts); Elixir LLM
+  support raised to 4.5 on the founder's assessment (early-adopter ecosystem, Tidewave's
+  inside-the-runtime view eliminating the debugging loop) and the evaluation spike
+  downgraded to an optional sanity check; Kotlin and Go realtime ratings lowered (2 each:
+  no realtime backbone; HTMX painful for WS/SSE); TypeScript field narrowed to TanStack
+  Start vs SvelteKit, with SvelteKit backend status recorded (Kit 3.0, `.live(...)`
+  remote queries, WebSockets in limbo, no background-job story). Overall: A 4.5,
+  B 3.8, C 3.7, D 3.6 — no real blocker remains for Option A.
 - Founder constraint recorded: the JVM candidate is **Kotlin-only, Java excluded**
   (LLM-corpus argument: Java corpus aging for AI-assisted work, Kotlin large, current
   and K2-native; plus founder preference).
