@@ -9,6 +9,13 @@ breaking changes as well, marked **Breaking** below.
 
 ## [Unreleased]
 
+- Technology proposal (docs/technology-proposal.md): five candidate stacks rated against
+  the plan's constraints (WhatsApp-first product, multi-tenant safety by construction,
+  solo-founder ops, B2B privacy); recommendation Elixir + Phoenix + LiveView + PostgreSQL
+  with Go + HTMX as runner-up, plus rated cross-cutting proposals (Postgres RLS tenancy,
+  EU-first hosting, in-stack OIDC now / IdP later, Meta Cloud API direct, ZDR LLM adapter,
+  Typst PDF). Decision pending — recorded as ADR when it lands.
+
 - Project scope defined in README.md: the SaaS rewrite of pocket-cfo — what it does in
   principle, and the major adaptations (multi-tenant safety, database instead of git data
   repo, technology deliberately unset, time tracking and invoicing abstractions, WhatsApp
