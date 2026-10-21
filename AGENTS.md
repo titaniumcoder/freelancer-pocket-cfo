@@ -1,4 +1,4 @@
-# AGENT.md
+# AGENTS.md
 
 **Current phase: pure architecture.** We write documents, not code. Do not assume,
 pick, or scaffold any technology — no language, framework, database, hosting or protocol
@@ -41,6 +41,11 @@ GitHub).
   unless the user names the version themselves; the proposal says so either way.
 - **Plan in small, complete subtasks.** Break any non-trivial task into independently
   verifiable units; one commit per subtask; push at the end of the plan, not per step.
+- **Hard rule — merging a PR is a founder action.** Branches and PRs are the working
+  state; the agent never merges — not its own PRs, not reverts, not admin fixes. A PR is
+  merged when the founder says "merge" in conversation or merges it himself in the UI.
+  During the architecture phase this collapses to: **one standing PR stays open until
+  the phase is finished**; work lands on its branch.
 - **Documents explain the why.** A fact from outside the code — a legal requirement, a
   vendor behaviour, a domain rule — belongs in a document under `docs/`, written once,
   so that the later implementation can be the mechanism. During the architecture phase
