@@ -1,6 +1,7 @@
 # ADR-0005: Chatbot basics — advice-only, human-confirmed action layer, ZDR + EU AI Act posture
 
-- **Status:** Accepted
+- **Status:** Evaluating — architecture direction (advice-only + action layer) is
+  founder-endorsed; the provider/model choice runs a bounded evaluation first
 - **Date:** 2026-10-21
 - **Deciders:** Rico Metzger (founder)
 - **Related:** ADR-0001 (stack), ADR-0002 (tenancy), ADR-0004 (WhatsApp channel)
@@ -67,10 +68,13 @@ domain logic, chatbot-independent).
 | **Azure OpenAI (EU region)** | EU residency, strongest enterprise paper trail | Enterprise terms | Alternative with the best compliance story |
 | **Anthropic / OpenAI APIs** | US processors; Anthropic trains not on API data by default | Terms-dependent | Usable only with signed ZDR terms |
 
-**Open item (recorded):** a bounded model-evaluation spike — the same finance-domain
-task set across Mistral's current models, one OpenRouter-routed alternative, and Azure
-OpenAI — picks the launch provider. The adapter makes this a config change, not a
-rewrite.
+**Open evaluation (before acceptance):** the same finance-domain task set — Q&A over
+sample tenant data plus action-proposal quality — is run against **Mistral's current
+models**, **one OpenRouter-routed alternative**, and **Azure OpenAI (EU)**. The winner
+becomes the launch provider behind the adapter; whichever wins must sign ZDR terms and
+a DPA. The adapter makes the outcome a config change, not a rewrite. Founder's prior:
+Mistral is naturally promising — *if it can compete* on quality; OpenRouter with ZDR is
+the stated fallback.
 
 ### Data flows
 

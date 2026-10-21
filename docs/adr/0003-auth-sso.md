@@ -1,4 +1,4 @@
-# ADR-0003: Authentication and SSO — in-stack now; Zitadel or WorkOS at SAML time
+# ADR-0003: Authentication and SSO — in-stack Ueberauth now, Zitadel at SAML time
 
 - **Status:** Accepted
 - **Date:** 2026-10-21
@@ -17,15 +17,25 @@ Founder constraints (2026-10-21):
 - Auth0 is **too bloated** — excluded.
 - Keycloak is out: running a Java IdP in the open is exactly the ops weight this project
   avoids.
-- The candidate IdPs are **Zitadel** and **WorkOS**.
+- The candidate IdPs are **Zitadel** and ~~WorkOS~~ — WorkOS removed (2026-10-21):
+  **no US provider.**
 - Library question: is Assent still alive? The founder's known-good experience is
   Ueberauth.
+- Founder insight recorded: OAuth providers (GitHub, Google, …) behind Ueberauth are
+  **user-oriented** — the choice of OAuth is a user choice, not ours. Our responsibility
+  is the platform baseline, not the provider list.
 
 ## Decision
 
 **Start in-stack: `phx.gen.auth` baseline + Ueberauth (or Assent) for social OIDC.
 Identity lives in our own Postgres — no third party sees logins. At the first B2B SAML
-customer, evaluate Zitadel first (default candidate), WorkOS second.**
+customer, Zitadel (self-hosted, EU) is the only recorded IdP option — WorkOS is removed,
+no US provider.**
+
+The OAuth-vs-IdP asymmetry, made explicit: social login strategies are a *user* choice —
+tenants bring whichever identity they prefer, and strategies are added on user demand,
+not by roadmap. A dedicated IdP (Zitadel) enters only when a *tenant organization*
+requires SAML federation — a genuinely different requirement.
 
 ### Library status (verified 2026-10-21, hex.pm)
 
@@ -49,12 +59,10 @@ a thin internal module so swapping strategies is not an app-wide event.
 - Per ADR-0002: the user record belongs to a tenant (freelancer) or maps into one
   (accountant) — the plug resolves tenant before `with_tenant/2` opens scope.
 
-### IdP options for the SAML-time upgrade (recorded, not decided)
-
-| Option | Fit | Trade-off |
+### IdP options for the SAML-time upgrade (recorded, not decided)| Option | Fit | Trade-off |
 |---|---|---|
 | **Zitadel** (self-hosted EU, or Zitadel cloud EU region) | Organizations as a first-class concept — natural for B2B tenants; OIDC+SAML; EU-native | One more service to run (but Go binary, lighter than Keycloak) |
-| **WorkOS** | Fastest SAML integration, purpose-built for SaaS | US processor — personal data leaves the EU; privacy trade-off needs justification |
+| **WorkOS** | ~~Fastest SAML~~ | **Removed by founder (2026-10-21): no US provider.** Identity is the most sensitive tenant data; a US processor fails the privacy bar by default |
 | Keycloak | — | Excluded by founder (ops weight in the open) |
 | Auth0 | — | Excluded by founder (bloated) |
 
@@ -62,5 +70,5 @@ a thin internal module so swapping strategies is not an app-wide event.
 
 - Zero extra infrastructure at launch; no third party sees logins (privacy criterion).
 - SAML is real work later — accepted, because B2B SAML customers do not exist yet.
-- If/when Zitadel or WorkOS is added, in-stack identities migrate via OIDC linking; the
+- If/when Zitadel is added, in-stack identities migrate via OIDC linking; the
   in-stack account remains the fallback login.

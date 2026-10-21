@@ -1,98 +1,91 @@
 # ADR-0002: Multi-tenancy — tenant columns on plain PostgreSQL, RLS as fail-closed enforcement
 
-- **Status:** Accepted
+- **Status:** Evaluating — direction agreed; Phoenix integration spike before acceptance
 - **Date:** 2026-10-21
 - **Deciders:** Rico Metzger (founder)
-- **Related:** ADR-0001 (stack: Elixir + Phoenix + Ecto + PostgreSQL), hosting ADR (follow-up)
+- **Related:** ADR-0001 (stack), ADR-0008 (hosting: Fly.io EU)
 
 ## Context
 
-The product is a multi-tenant SaaS holding freelancer finance data: invoices, payment
-state, budget windows, actuals, tax-relevant documents. README.md requires that
-cross-tenant access be *structurally impossible, not merely forbidden*.
+The product is a multi-tenant SaaS holding freelancer finance data. The founder's
+framing: multi-tenancy is a *model* distinction — "normally that is done with a tenant
+column" — and the database must stay a **normal database** with no vendor-specific
+features, so hosting stays swappable. Safety must be structural: a forgotten
+`WHERE tenant_id = …` must not be able to leak another tenant's data.
 
-The founder's framing (2026-10-21): multi-tenancy is first of all a *model* distinction —
-"normally that is done with a tenant column" — and the database must remain a **normal
-database** with no vendor-specific features, so the project can switch hosting around
-freely. Safety must be structural: forgetting a `WHERE tenant_id = …` must not be able
-to leak another tenant's data.
+## Agreed direction
 
-## Decision
+**Shared-schema multi-tenancy on plain PostgreSQL: every tenant-owned table carries a
+`tenant_id` column (the model), Row-Level Security is the enforcement layer on top (the
+guarantee).** RLS is core Postgres since 9.5 — no vendor feature, works identically
+self-hosted, on Fly, on Neon, anywhere. Supabase/Neon are *hosting* choices, not
+database choices (Neon: pure Postgres + branching; Supabase: Postgres plus PostgREST
+conventions we deliberately don't adopt).
 
-**Shared-schema multi-tenancy on plain PostgreSQL. Every tenant-owned table carries a
-`tenant_id` column (the model), and Row-Level Security is the enforcement layer on top
-of it (the guarantee).** RLS is not an alternative to the tenant column — it is what
-makes the tenant column un-forgettable.
+Policy shape (fail-closed):
 
-Key properties:
+```sql
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON invoices
+  USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+```
 
-- **Plain PostgreSQL.** RLS has been core Postgres since 9.5. It is not a cloud or
-  vendor feature. It works identically on self-hosted Postgres, Fly Postgres, Neon,
-  or Supabase's Postgres. Nothing in this decision locks hosting.
-- **Fail-closed by construction.** The app connects as a dedicated non-superuser role
-  without `BYPASSRLS`; tables are `ALTER TABLE … FORCE ROW LEVEL SECURITY` (so even the
-  table owner cannot bypass); every policy reads the tenant from the transaction-local
-  setting. If the setting is missing, the policy matches nothing — a forgotten tenant
-  filter returns zero rows instead of another tenant's data.
-- **Postgres flavors are hosting choices, not database choices.** Neon = pure Postgres
-  (branching is attractive for ephemeral dev/CI databases; EU region available).
-  Supabase = Postgres plus PostgREST/JWT conventions (`auth.uid()` patterns) that an
-  Ecto app would not use — acceptable as *plain Postgres hosting*, but we deliberately
-  adopt none of its app-level conventions. The hosting decision is a separate ADR.
+App role: no `BYPASSRLS`, no superuser. If the setting is missing, the policy matches
+nothing — leaks become zero-rows instead of another tenant's data.
 
-## How it is done with normal Elixir tooling (the documented pattern)
+## The open question: how exactly, in Phoenix
 
-1. **Roles.** Migrations run as an owner role. The runtime app role is separate, has no
-   `BYPASSRLS`/superuser, and is the only role used in production (`FORCE ROW LEVEL
-   SECURITY` keeps the owner path closed too).
-2. **Per-request tenant binding.** A Phoenix plug resolves the tenant (from session/
-   token) and opens a transaction that sets the tenant transaction-locally:
+The founder used the transactional `with_tenant` pattern before and found it **a pain
+with Phoenix** — but agrees "it would be safest". Before acceptance, the integration
+must be designed against the real pain points, and proven in a spike.
 
-   ```elixir
-   def with_tenant(tenant_id, fun) do
-     Repo.transaction(fn ->
-       # `true` = transaction-local, auto-cleared on commit/rollback
-       Repo.query!("SELECT set_config('app.tenant_id', $1, true)", [tenant_id])
-       fun.()
-     end)
-   end
-   ```
+### Known pain points of the transactional pattern
 
-   All queries inside inherit the scope. A convenience macro (`tenanted_schema` +
-   `scope/2`) may generate tenant predicates for ergonomics — but the *invariant* is
-   RLS; the macro is sugar, never the guarantee.
-3. **Policy shape.** On every tenanted table:
+1. **Everything becomes a transaction.** Even reads need `BEGIN … SET LOCAL … SELECT …
+   COMMIT`. Perf cost is minor (an extra round trip — this product is
+   latency-tolerant); the real pain is ergonomics and forgetting to wrap.
+2. **Process-context leaks.** Phoenix spawns processes that do *not* inherit tenant
+   context: LiveView `Task.async`/`assign_async`, Presence, Oban jobs. Every spawned
+   process must re-establish tenant scope explicitly.
+3. **Fail-closed debugging.** An unwrapped `Repo.all` silently returns zero rows —
+   secure, but confusing unless dev/test guardrails raise loudly.
+4. **Test friction.** Ecto SQL sandbox already wraps tests in a transaction; `set_config`
+   must cooperate with it, and factories must seed within tenant scope.
+5. **Pooling discipline.** `set_config(..., true)` is transaction-local and pool-safe;
+   any accidental session-level `SET` would leak across checkouts — must never appear.
 
-   ```sql
-   ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
-   CREATE POLICY tenant_isolation ON invoices
-     USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
-   ```
+### Pattern candidates for the spike
 
-4. **Guard rails.** `tenant_id UUID NOT NULL` with composite FKs and composite indexes
-   `(tenant_id, …)` everywhere; migrations checklist item: every new tenanted table
-   ships with its policy in the same migration. A dedicated test (and a Livebook
-   recipe) proves a query with no tenant context returns zero rows and a foreign-tenant
-   lookup is empty. No cross-tenant foreign keys, ever.
-
-## Options considered
-
-| Option | Isolation | Solo-ops cost | Verdict |
+| Pattern | Mechanism | Friction | Safety |
 |---|---|---|---|
-| Shared schema + `tenant_id` + RLS (this decision) | Highest: fail-closed at the DB | Low | **Accepted** |
-| Shared schema + `tenant_id` column only (no RLS) | Lowest: correctness depends on every query remembering the filter | Lowest | Rejected — the one bad query is enough |
-| Schema-per-tenant | High, but N schemas × M migrations sprawl | Medium | Rejected |
-| Database-per-tenant | Strongest blast radius | High | Rejected for now |
-| Supabase/Neon "as the database" | N/A — they *are* Postgres; not a tenancy model | — | N/A — hosting only; see hosting ADR |
+| **A. Explicit `with_tenant/2` everywhere** | Caller wraps every unit of work in `Repo.transaction` + `set_config` | High (the founder's past pain) | Highest: intent is visible at every call site |
+| **B. TenantContext (process dictionary) + Repo wrapper** | Plug stores tenant in process dict; a thin `MyApp.Repo` wrapper auto-opens the transaction and sets config (reusing an open transaction when inside one); dev/test override raises on repo calls outside a scope; Oban workers get a `use TenantedWorker` macro; a `TenantScope.spawn/3` helper for tasks | Low at call sites; discipline lives in one place | Same RLS guarantee; guardrails catch misses in dev |
+| **C. Schema-per-tenant via Ecto prefixes** | Ecto's native `prefix` support | Migration/pool sprawl grows with tenants | Rejected (recorded ADR-0002 v1); revisit only as escape hatch |
 
-## Consequences
+Candidate B is the likely winner *provided* the spike proves the guardrails; the RLS
+policies make even a missed guard a zero-row result, not a leak — the guardrails are for
+debuggability, RLS is the guarantee.
 
-- Tenancy leaks become impossible-by-construction, provable in tests, independent of
-  application code discipline.
-- Slight per-request transaction overhead (`set_config` inside a transaction); acceptable
-  for a latency-tolerant finance SaaS.
-- Hosting stays swappable; Neon's branching and EU regions make it the leading
-  *hosting* candidate to be weighed in the hosting ADR (self-hosted/Hetzner remains the
-  sovereignty alternative).
-- Any future managed-Postgres migration keeps all RLS policies intact because they are
-  plain SQL.
+### Spike definition (exit criteria for acceptance)
+
+A minimal Phoenix + Ecto + Oban + LiveView app proving, for the chosen pattern:
+
+1. Request-scoped read/write through the normal repo calls (no per-call wrapping in
+   controllers/LiveViews).
+2. Oban job scoping (tenanted worker macro) incl. a redelivery/idempotency scenario.
+3. LiveView async (`Task.async`/`assign_async`) scoping via the spawn helper —
+   explicitly passing tenant, no accidental inheritance gaps.
+4. Cross-tenant leak test: a forged query with wrong/absent tenant returns zero rows;
+   same test fails loudly if RLS is dropped.
+5. Sandbox-compatible tests + factories seeded in tenant scope.
+6. Pooled connections verified safe (`set_config` transaction-local; no session leakage).
+7. Measured overhead of transaction-per-request on a representative endpoint.
+
+Acceptance requires the founder's review of the spike's ergonomics.
+
+## Consequences (anticipated, pending spike)
+
+- Structural, testable tenancy safety independent of application discipline.
+- Cost: transaction-per-request overhead + one integration module to maintain.
+- Hosting stays swappable (see ADR-0008: Fly app hosting; Postgres hosting is a separate
+  open decision — Fly Postgres vs Neon vs self-hosted — and will follow the spike).

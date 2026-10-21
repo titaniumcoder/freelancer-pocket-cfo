@@ -1,6 +1,7 @@
 # ADR-0004: WhatsApp Business integration — Meta Cloud API direct, own thin client
 
-- **Status:** Accepted
+- **Status:** Evaluating — direct Meta Cloud API is settled (founder: "not even a
+  decision", no BSP); the client layer goes through a two-library evaluation first
 - **Date:** 2026-10-21
 - **Deciders:** Rico Metzger (founder)
 - **Related:** ADR-0001 (stack: Oban for idempotent ingestion), ADR-0005 (chatbot),
@@ -19,14 +20,15 @@ maintaining our own library if the ecosystem's clients disappoint.
 
 ## Decision
 
-**Integrate the WhatsApp Business Platform Cloud API directly, over a thin in-repo
-client generated from Meta's published API spec. Webhook ingestion, idempotency, and
-message dispatch are first-class Phoenix/Oban machinery.**
+**Integrate the WhatsApp Business Platform Cloud API directly, over our own client
+layer. Webhook ingestion, idempotency, and message dispatch are first-class
+Phoenix/Oban machinery.**
 
 The API quality justifies this: Meta publishes the Cloud API with a complete OpenAPI
 spec, structured message types (text, interactive, templates, Flows), and
 well-documented webhooks. The integration is an afternoon of plumbing, not a research
-project.
+project — which is exactly why the *direct* choice is settled and the remaining open
+question is only the client layer.
 
 ### Ecosystem clients (surveyed 2026-10-21, hex.pm)
 
@@ -39,12 +41,26 @@ project.
 
 Meta publishes **no first-party Elixir SDK** — all of the above are community work.
 
-**Plan:** generate a thin client from Meta's spec (the `whatsapp_sdk` approach proves
-this is tractable), keeping the surface we actually use: webhook verification, inbound
-messages, outbound free-form + template messages, interactive buttons, Flows (ADR-0007),
-media. `anu`/`whatsapp_sdk` serve as references. If generation drags, adopting `anu` is
-the pre-approved fallback. A **Livebook test harness** exercises the real API (verify
-token, sandbox number, template sends) as living documentation.
+## Client layer: open evaluation (the actual decision)
+
+Meta publishes **no first-party Elixir SDK** — all candidates are community work. The
+founder's direction: **keep the two leading libraries for an evaluation** before
+committing; writing our own thin library (generated from Meta's spec) remains the
+fallback if both disappoint.
+
+| Candidate | Snapshot (2026-10-21) | Notes |
+|---|---|---|
+| **`whatsapp_sdk`** | 79 service modules, 352 typed structs, generated from Meta's official OpenAPI spec | Broadest coverage; generated-code approach matches our instincts; maintenance/maturity to check in the eval |
+| **`anu`** (v0.2.1) | Fresh and idiomatic: requires Elixir 1.19+/OTP 27+, no hidden processes, explicit `Anu.Client` per phone number, Finch-based | Matches our style closely; smaller surface |
+| ~~own generated client~~ | Fallback option only, not the starting bet | If the eval fails both candidates |
+| `whatsapp_elixir`, `whatsapp_cloud_api_wrapper` | Tiny adoption / minimal | Excluded |
+
+**Evaluation protocol:** a **Livebook** exercises each candidate against the real API
+(verify token, sandbox number, webhook echo, one template send, one interactive send,
+media upload). Criteria: spec coverage for what we need (templates, interactive, Flows,
+media, webhooks), correctness under Elixir 1.19, explicitness (no hidden processes),
+error/refresh-token handling, and maintenance signal. Whichever wins becomes the
+in-repo client dependency — or its own thin library if neither clears the bar.
 
 ### Ingestion design (first-class, not an afterthought)
 
@@ -74,8 +90,9 @@ status (see ADR-0007).
 
 - One fewer data processor (no BSP sees tenant messages) — directly serves the privacy
   criterion.
-- We own the client surface: upgrades are a regen + diff, not someone else's roadmap.
+- We own the client surface: swaps are bounded by the adapter surface, and the
+  Livebook harness catches API drift immediately.
 - Meta's spec changes can break us faster than a maintained SDK would — accepted; the
-  Livebook harness catches drift immediately.
+  harness is the early-warning system.
 - Message costs become a real COGS line; metering is designed in from day one
   (per-message delivery records).

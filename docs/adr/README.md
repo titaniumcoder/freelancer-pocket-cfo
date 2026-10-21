@@ -21,8 +21,11 @@ higher number. Numbers are never reused, so the sequence only ever grows bottom-
 ## Lifecycle
 
 - A decision is **Proposed** while the discussion is ongoing.
+- It becomes **Evaluating** when the option set is agreed and a bounded evaluation
+  (spike, benchmark, model comparison) must run before acceptance; the ADR records the
+  spike's exit criteria.
 - It becomes **Accepted** when the founder confirms it (here: in conversation with the
-  agent, recorded in the ADR and landed on the standing architecture-phase PR).
+  agent, recorded in the ADR and landed on the architecture PR).
 - Superseded ADRs keep their number and get a `Superseded by ADR-XXXX` status.
 
 [madr]: https://github.com/adr/madr
