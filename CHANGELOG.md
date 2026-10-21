@@ -9,6 +9,13 @@ breaking changes as well, marked **Breaking** below.
 
 ## [Unreleased]
 
+- **Technology decision accepted (ADR-0001, docs/adr/):** the stack is **Elixir + Phoenix
+  + LiveView + PostgreSQL**. Rejected alternatives and trade-offs (2nd-developer cost
+  accepted) recorded in the ADR; docs/adr/README.md fixes the ADR convention (MADR
+  format, sequential bottom-up numbering starting at 0001, immutable once accepted).
+  Cross-cutting decisions (tenancy, auth, hosting, WhatsApp, LLM adapter, PDF) follow as
+  ADR-0002+.
+
 - AGENTS.md working agreement extended: hard rule — merging a PR is a founder action —
   the agent never merges on its own initiative; during the architecture phase one standing
   PR stays open until the phase is finished.

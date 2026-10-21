@@ -1,9 +1,10 @@
 # Technology Proposal
 
-Status: **Proposed — decision pending.** This document rates the candidate stacks against
-the project's constraints and recommends one. Nothing here is decided until an explicit
-decision is recorded (see [ADR-0001 placeholder](adr/0001-technology-decision.md), to be
-written when the decision lands).
+Status: **Decided — see [ADR-0001](adr/0001-technology-decision.md).** This document
+rated the candidate stacks against the project's constraints and recommended one; the
+decision (Elixir + Phoenix + LiveView + PostgreSQL) is recorded in
+[ADR-0001](adr/0001-technology-decision.md). This document is kept as the decision's
+analysis and evaluation record.
 
 ## Context
 
@@ -290,8 +291,8 @@ reproducible, no headless-browser ops burden. Same reasoning for any language ch
 
 ## Next steps after the decision
 
-1. Write `docs/adr/0001-technology-decision.md` recording the choice and the rejected
-   alternatives' reasons.
+1. ~~Write `docs/adr/0001-technology-decision.md` recording the choice and the rejected
+   alternatives' reasons.~~ — done, ADR-0001 accepted (2026-10-21).
 2. Follow-up ADRs: multi-tenancy model (RLS), auth/SSO, WhatsApp integration, LLM/ZDR
    adapter, hosting.
 3. **LLM-for-Elixir spike — optional sanity check only** (downgraded from a decision
