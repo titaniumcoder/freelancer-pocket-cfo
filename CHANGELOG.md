@@ -9,9 +9,9 @@ breaking changes as well, marked **Breaking** below.
 
 ## [Unreleased]
 
-- AGENT.md working agreement extended: merging a PR is a founder action — the agent
-  never merges on its own initiative; during the architecture phase one standing PR
-  stays open until the phase is finished.
+- AGENTS.md working agreement extended: hard rule — merging a PR is a founder action —
+  the agent never merges on its own initiative; during the architecture phase one standing
+  PR stays open until the phase is finished.
 
 - Technology proposal (docs/technology-proposal.md): five candidate stacks rated against
   the plan's constraints (WhatsApp-first product, multi-tenant safety by construction,
@@ -44,6 +44,6 @@ breaking changes as well, marked **Breaking** below.
   repo, technology deliberately unset, time tracking and invoicing abstractions, WhatsApp
   Business channel with a ZDR chatbot, stricter B2B and data-privacy rules, SSO beyond
   GitHub).
-- AGENT.md establishes the architecture-phase working agreement: documents only, no code,
+- AGENTS.md establishes the architecture-phase working agreement: documents only, no code,
   no technology assumptions, conventional commits and Keep a Changelog apply from the
   start despite the project sitting effectively at `0.0.0`.
