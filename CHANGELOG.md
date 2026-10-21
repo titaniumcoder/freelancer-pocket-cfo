@@ -15,6 +15,13 @@ breaking changes as well, marked **Breaking** below.
   with Go + HTMX as runner-up, plus rated cross-cutting proposals (Postgres RLS tenancy,
   EU-first hosting, in-stack OIDC now / IdP later, Meta Cloud API direct, ZDR LLM adapter,
   Typst PDF). Decision pending — recorded as ADR when it lands.
+- Technology proposal re-examined after founder feedback: Elixir 1.19's gradual
+  set-theoretic types, Tidewave, and the realtime WhatsApp → app story added to the
+  Elixir case (with second-developer cost and LLM-codegen evaluation noted as open
+  risks); Spring Boot 4 + Kotlin 2.2 + Spring AI 2.0/MCP re-rated B; Scala dropped;
+  TypeScript reframed as a vendor-lock-free framework investigation (TanStack Start,
+  Remix/RR7, Hono, NestJS). New comparison table added; no real blocker found for the
+  founder's Elixir-leaning gut decision.
 
 - Project scope defined in README.md: the SaaS rewrite of pocket-cfo — what it does in
   principle, and the major adaptations (multi-tenant safety, database instead of git data
