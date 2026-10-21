@@ -180,17 +180,6 @@ SvelteKit backend status (checked October 2026, relevant to a chat-first product
   WhatsApp-webhook-first product the jobs gap matters more than the WS gap, and it is
   the same gap every Node backend carries.
 
-### D. TypeScript — Next.js (or NestJS) + Prisma + PostgreSQL
-
-- **Profile fit (3.5/5):** TS 4★, frontend is the weaker hand.
-- **Product fit (4/5):** LLM/WhatsApp SDKs land here first; Vercel-style PaaS is fast.
-- **Safety by construction (3/5):** the weakest for a finance product — runtime
-  flexibility, `any` leakage, client/server boundary discipline is opt-in.
-- **Solo ops (4/5):** PaaS-friendly but privacy posture (EU residency) narrows platform
-  choice; dependency churn (npm) is a standing tax.
-- **Ecosystem (5/5) / Longevity (4/5).**
-- **Weighted score: ≈ 3.7**
-
 ### E. Scala + ZIO/http4s + PostgreSQL — dropped
 
 Dropped by founder decision (2026-10): the language is fading and the project will not
