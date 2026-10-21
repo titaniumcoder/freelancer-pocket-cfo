@@ -10,47 +10,43 @@ breaking changes as well, marked **Breaking** below.
 ## [Unreleased]
 
 - **Decision pack 1 — ADRs 0002–0008, status after founder review (2026-10-21):**
-  - **ADR-0002 database/multi-tenancy — Evaluating:** direction agreed (plain
-    PostgreSQL, tenant_id columns + RLS as fail-closed enforcement, non-BYPASSRLS app
-    role); acceptance blocked on a Phoenix integration spike — the founder found the
-    transactional `with_tenant` pattern painful before, so the ADR now documents the
-    known pain points (transaction-per-request, process-context leaks in LiveView/Oban,
-    fail-closed debugging, sandbox friction) and defines spike exit criteria for two
-    candidate patterns (explicit `with_tenant/2` vs process-dictionary TenantContext +
-    Repo wrapper with dev/test guardrails).
-  - **ADR-0003 auth/SSO — Accepted:** in-stack `phx.gen.auth` + Ueberauth (founder's
-    known-good tool; Assent verified alive but slow — last release 2025-06 — kept as
-    fallback); **WorkOS removed by founder: no US provider**; recorded insight: OAuth
+  - **ADR-0002 database/multi-tenancy — Accepted (revised):** Phoenix 1.8 changed the
+    calculus — generated `scope/2` context helpers and phx.gen.auth/LiveView scope
+    threading make app-layer tenant scoping automatic, so **RLS is not adopted**
+    (founder: "a need from the past"); the transactional `with_tenant` machinery is
+    dropped. Tenant columns + composite indexes stay on plain Postgres; the context API
+    is the only data access surface; CI carries a cross-tenant leak test; RLS reopens
+    only if a second DB access path ever appears. README.md's tenancy wording aligned
+    (safe by construction via the scoped context layer).
+  - **ADR-0003 auth/SSO — Accepted:** in-stack `phx.gen.auth` + Ueberauth (Assent kept
+    as fallback); **WorkOS removed by founder: no US provider**; recorded insight: OAuth
     providers are a user choice, not ours; Zitadel is the single SAML-time IdP option;
     Keycloak and Auth0 excluded.
   - **ADR-0004 WhatsApp Business — Evaluating (client layer):** direct Meta Cloud API
-    is settled ("not even a decision", no BSP); the two leading libraries —
-    `whatsapp_sdk` (spec-generated, 79 modules/352 typed structs) and `anu`
-    (idiomatic, Elixir 1.19+, explicit per-number client) — go through a Livebook-based
-    live-API evaluation; own generated library is fallback only.
-  - **ADR-0005 chatbot basics — Evaluating (provider/model):** architecture direction
+    settled (no BSP); **three equally viable options for evaluation** — `whatsapp_sdk`,
+    `anu` (founder's small-edge prior: closest to what we need), and our own thin
+    generated client — exercised via a Livebook against the live API.
+  - **ADR-0005 chatbot basics — Evaluating (tenant-context isolation):** architecture
     founder-endorsed (advice-only, human-confirmed action layer: propose → visualize →
-    apply → track, the wmc-bexio pattern); provider choice runs a bounded evaluation —
-    Mistral first, OpenRouter-with-ZDR fallback, Azure OpenAI EU as paper-trail
-    alternative; ZDR contracts + DPA required of the winner; EU AI Act Art. 50
-    disclosure posture stands.
+    apply → track); **the evaluation was reframed by the founder: the question is how
+    context machinery makes cross-tenant interference impossible** — scoped context
+    assembly via the ADR-0002 API, per-tenant snapshots, provider-cache awareness, and
+    an isolation red-team test suite gate the integration; model comparison (Mistral
+    first, OpenRouter-ZDR fallback, Azure EU) runs inside that harness; ZDR + DPA are
+    hard gates.
   - **ADR-0006 payments — Accepted:** merchant of record via Paddle (EU-facing entity
-    Paddle Payments Ltd, Dublin verified; English-law contracts); founder's argument:
-    the B2C share (one-man shows, employees paying personally) makes EU consumer VAT
-    via MoR much simpler; own-MoR/Stripe rejected for launch (OSS VAT compliance tail);
-    dogfooding moved to the tenant-facing invoice engine.
+    Paddle Payments Ltd, Dublin verified); founder's argument: the B2C share makes EU
+    consumer VAT via MoR much simpler; own-MoR/Stripe rejected for launch.
   - **ADR-0007 customer support — Accepted:** WhatsApp-first in-product support —
-    mandatory onboarding via WhatsApp Flows (native in-chat multi-step forms, verified
-    with endpoint-connected builds), chatbot-first with founder escalation; Chatwoot
-    self-hosted as the recorded step-2; Zendesk/HelpScout/Intercom excluded on privacy
-    posture.
-  - **ADR-0008 hosting — Accepted:** Fly.io on an EU region; stateless machines;
-    custom hostname `pocket-cfo.titaniumcoder.com`; dedicated egress IP for provider
-    allowlists and a clean processor story; release-artifact deploys. Postgres hosting
-    (Fly Postgres vs Neon vs self-hosted) deliberately left to follow the ADR-0002
-    spike.
-  - docs/adr/README.md: **Evaluating** added to the ADR lifecycle (Proposed →
-    Evaluating → Accepted).
+    onboarding via WhatsApp Flows (native in-chat multi-step forms, verified),
+    chatbot-first with founder escalation; Chatwoot self-hosted as recorded step-2.
+  - **ADR-0008 hosting — Accepted:** Fly.io EU region, stateless machines, hostname
+    `pocket-cfo.titaniumcoder.com`, dedicated egress IP; **Postgres hosting: Fly
+    Postgres rejected by founder** (cost shape wrong for an idle-heavy SaaS —
+    "nothing 90% of the time"); **Neon (EU) is the default candidate** (founder
+    experience + database branching for testing), Supabase the evaluated alternative;
+    final pick at scaffolding time.
+  - docs/adr/README.md: **Evaluating** added to the ADR lifecycle.
 
 - **Technology decision accepted (ADR-0001, docs/adr/):** the stack is **Elixir + Phoenix
   + LiveView + PostgreSQL**, Go + HTMX as runner-up fallback; accepted trade-off:

@@ -34,17 +34,19 @@ region picked at setup from Fly's EU list), with:**
 - **Deploys via release artifact** (`fly deploy` from CI or locally) — no Kubernetes,
   no build-pipeline zoo; ADR-0001's "one BEAM binary, one VM" rationale continues here.
 
-### Postgres hosting: deliberately separate
+### Postgres hosting: Neon is the default candidate, Fly Postgres rejected
 
-The *application* hosting is decided; the *database* hosting is not, because it depends
-on the ADR-0002 evaluation (RLS integration spike) and backup/branching needs. Options
-recorded for that later decision:
+The founder decided the direction (2026-10-21): **Fly Postgres is out** — "ways too
+expensive for our usecase." Even as a SaaS, the app will do nothing ~90% of the time;
+keeping a clustered/always-on database running is not useful for that profile.
+Managed serverless Postgres brings more features at the right cost shape:
 
-| Option | Notes |
-|---|---|
-| Fly Postgres (same region) | One platform, lowest latency; backups and upgrades are more of our job |
-| Neon (EU region) | Pure Postgres, branching for ephemeral dev/CI; separate vendor |
-| Self-hosted (Hetzner) | Maximum sovereignty, most ops |
+| Option | Verdict | Why |
+|---|---|---|
+| **Neon (EU region)** | **Default candidate** | Founder has worked with it many times; **database branching** for ephemeral dev/test environments is "really nice"; scale-to-zero fits the idle-heavy profile; pure Postgres (pairs with ADR-0002's plain-SQL tenancy) |
+| Supabase (EU region) | Evaluated alternative | Similar feature set (branching/backups) — kept as the comparison point; final pick at scaffolding time |
+| Fly Postgres | **Rejected** | Cost shape wrong for an idle-heavy solo SaaS; clustered always-on DB unneeded |
+| Self-hosted (Hetzner) | Parked | Maximum sovereignty, most ops — reopen only if the managed options chafe |
 
 ## Options considered
 

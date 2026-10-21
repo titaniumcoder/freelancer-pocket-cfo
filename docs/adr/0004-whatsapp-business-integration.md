@@ -44,23 +44,24 @@ Meta publishes **no first-party Elixir SDK** — all of the above are community 
 ## Client layer: open evaluation (the actual decision)
 
 Meta publishes **no first-party Elixir SDK** — all candidates are community work. The
-founder's direction: **keep the two leading libraries for an evaluation** before
-committing; writing our own thin library (generated from Meta's spec) remains the
-fallback if both disappoint.
+founder's direction: **three options, equally viable, all kept for evaluation** — the
+two libraries and our own thin client. The founder's prior: **`anu` has a small edge**
+because it is very near to what we need, but that prior does not pre-decide.
 
-| Candidate | Snapshot (2026-10-21) | Notes |
+| Option | Snapshot (2026-10-21) | Notes |
 |---|---|---|
 | **`whatsapp_sdk`** | 79 service modules, 352 typed structs, generated from Meta's official OpenAPI spec | Broadest coverage; generated-code approach matches our instincts; maintenance/maturity to check in the eval |
-| **`anu`** (v0.2.1) | Fresh and idiomatic: requires Elixir 1.19+/OTP 27+, no hidden processes, explicit `Anu.Client` per phone number, Finch-based | Matches our style closely; smaller surface |
-| ~~own generated client~~ | Fallback option only, not the starting bet | If the eval fails both candidates |
+| **`anu`** (v0.2.1) | Fresh and idiomatic: requires Elixir 1.19+/OTP 27+, no hidden processes, explicit `Anu.Client` per phone number, Finch-based | **Founder's small-edge prior**: closest to what we need |
+| **Own thin client** (option 3) | Generated from Meta's spec, exactly the surface we use | Equal contender, not a fallback — evaluated on the same criteria |
 | `whatsapp_elixir`, `whatsapp_cloud_api_wrapper` | Tiny adoption / minimal | Excluded |
 
-**Evaluation protocol:** a **Livebook** exercises each candidate against the real API
+**Evaluation protocol:** a **Livebook** exercises each option against the real API
 (verify token, sandbox number, webhook echo, one template send, one interactive send,
 media upload). Criteria: spec coverage for what we need (templates, interactive, Flows,
 media, webhooks), correctness under Elixir 1.19, explicitness (no hidden processes),
-error/refresh-token handling, and maintenance signal. Whichever wins becomes the
-in-repo client dependency — or its own thin library if neither clears the bar.
+error/refresh-token handling, and maintenance signal — plus, for the own-client option,
+the up-front generation effort. The winner becomes the client; the other two stay
+recorded in this ADR.
 
 ### Ingestion design (first-class, not an afterthought)
 

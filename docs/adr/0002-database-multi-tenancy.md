@@ -1,91 +1,84 @@
-# ADR-0002: Multi-tenancy — tenant columns on plain PostgreSQL, RLS as fail-closed enforcement
+# ADR-0002: Multi-tenancy — tenant columns with Phoenix 1.8 app-layer scoping; RLS not adopted
 
-- **Status:** Evaluating — direction agreed; Phoenix integration spike before acceptance
+- **Status:** Accepted
 - **Date:** 2026-10-21
 - **Deciders:** Rico Metzger (founder)
-- **Related:** ADR-0001 (stack), ADR-0008 (hosting: Fly.io EU)
+- **Related:** ADR-0001 (stack), ADR-0008 (hosting — Neon is the default Postgres host),
+  ADR-0005 (chatbot context isolation builds on this)
 
 ## Context
 
-The product is a multi-tenant SaaS holding freelancer finance data. The founder's
-framing: multi-tenancy is a *model* distinction — "normally that is done with a tenant
-column" — and the database must stay a **normal database** with no vendor-specific
-features, so hosting stays swappable. Safety must be structural: a forgotten
-`WHERE tenant_id = …` must not be able to leak another tenant's data.
+Multi-tenancy is a model distinction: "normally that is done with a tenant column" —
+the database stays a normal database with no vendor-specific features, so hosting stays
+swappable. Cross-tenant access must be impossible by construction, not merely forbidden.
 
-## Agreed direction
+The founder **re-opened the earlier RLS direction** with a concrete technology
+observation: **Phoenix 1.8 changed the calculus.** Generated contexts ship a `scope/2`
+helper and every generated query automatically extends with the tenant predicate; the
+LiveView generators thread a `Scope` struct through assigns; `phx.gen.auth` integrates
+with it. Tenant scoping is no longer a hand-rolled discipline — it is generated,
+ergonomic, and reviewable. The transactional `with_tenant` + `SET LOCAL` machinery
+(whose Phoenix friction was already recorded) solves a problem the framework now solves
+better: **"sounds like a need from the past."**
 
-**Shared-schema multi-tenancy on plain PostgreSQL: every tenant-owned table carries a
-`tenant_id` column (the model), Row-Level Security is the enforcement layer on top (the
-guarantee).** RLS is core Postgres since 9.5 — no vendor feature, works identically
-self-hosted, on Fly, on Neon, anywhere. Supabase/Neon are *hosting* choices, not
-database choices (Neon: pure Postgres + branching; Supabase: Postgres plus PostgREST
-conventions we deliberately don't adopt).
+## Decision
 
-Policy shape (fail-closed):
+**Tenanted tables carry `tenant_id` (the model). Scoping is enforced in the application
+layer through Phoenix 1.8 scopes: every tenanted context function requires a `Scope` and
+extends queries with the tenant predicate automatically. Row-Level Security is *not*
+adopted.**
 
-```sql
-ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON invoices
-  USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
-```
+Concretely:
 
-App role: no `BYPASSRLS`, no superuser. If the setting is missing, the policy matches
-nothing — leaks become zero-rows instead of another tenant's data.
+- **The context API is the only data access surface.** Controllers and LiveViews never
+  call `Repo` directly for tenanted data; they call context functions that require a
+  Scope. A query that reaches `Repo` without a tenant predicate is a code-review and CI
+  failure, not a runtime hope.
+- **Oban jobs carry the tenant explicitly** (job args / worker metadata) and re-build
+  the Scope at `perform/2` — no process-dictionary magic.
+- **Database hygiene stays:** app role without superuser, `tenant_id UUID NOT NULL`,
+  composite indexes `(tenant_id, …)`, no cross-tenant foreign keys, migrations ship the
+  column + index together. Tenant deletion = row deletion (GDPR erasure without schema
+  surgery).
+- **RLS explicitly rejected** — not deferred. Rationale: the database is accessed by
+  exactly one application; the framework generates the scoping; the transactional
+  machinery bought protection against bugs in a layer the framework now protects
+  anyway, at real friction (transaction-per-request, process-context plumbing in
+  LiveView/Oban, sandbox awkwardness).
 
-## The open question: how exactly, in Phoenix
+### The honest difference (recorded, with mitigations)
 
-The founder used the transactional `with_tenant` pattern before and found it **a pain
-with Phoenix** — but agrees "it would be safest". Before acceptance, the integration
-must be designed against the real pain points, and proven in a spike.
+RLS would additionally have protected against: (a) a forgotten scope in hand-written
+(non-generated) queries, and (b) non-application access paths hitting the database
+directly. Mitigations adopted in its place:
 
-### Known pain points of the transactional pattern
+1. Context-API-only rule, enforced by convention and CI (a repo-calls-outside-contexts
+   check).
+2. A cross-tenant leak test in CI: asserting that scope functions never return foreign
+   rows, seeded adversarially.
+3. **Revisit trigger:** if a second access path to the database ever appears (BI tool,
+   reporting service, microservice), the RLS evaluation reopens — that is the scenario
+   it was built for.
 
-1. **Everything becomes a transaction.** Even reads need `BEGIN … SET LOCAL … SELECT …
-   COMMIT`. Perf cost is minor (an extra round trip — this product is
-   latency-tolerant); the real pain is ergonomics and forgetting to wrap.
-2. **Process-context leaks.** Phoenix spawns processes that do *not* inherit tenant
-   context: LiveView `Task.async`/`assign_async`, Presence, Oban jobs. Every spawned
-   process must re-establish tenant scope explicitly.
-3. **Fail-closed debugging.** An unwrapped `Repo.all` silently returns zero rows —
-   secure, but confusing unless dev/test guardrails raise loudly.
-4. **Test friction.** Ecto SQL sandbox already wraps tests in a transaction; `set_config`
-   must cooperate with it, and factories must seed within tenant scope.
-5. **Pooling discipline.** `set_config(..., true)` is transaction-local and pool-safe;
-   any accidental session-level `SET` would leak across checkouts — must never appear.
+## Options considered
 
-### Pattern candidates for the spike
+| Option | Verdict | Why |
+|---|---|---|
+| **App-layer scoping via Phoenix 1.8 scopes** | **Accepted** | Generated, ergonomic, reviewable; zero runtime machinery; matches how the framework now wants apps built |
+| RLS (`with_tenant` + `SET LOCAL`) | Rejected | Real Phoenix friction, transaction-per-request, protects a layer the framework now scopes by construction; the founder's call: a need from the past |
+| Schema-per-tenant (Ecto prefixes) | Rejected | Migration/pool sprawl grows linearly with tenants |
+| Database-per-tenant | Rejected | Ops cost × tenants; escape hatch only if a large B2B tenant demands it |
 
-| Pattern | Mechanism | Friction | Safety |
-|---|---|---|---|
-| **A. Explicit `with_tenant/2` everywhere** | Caller wraps every unit of work in `Repo.transaction` + `set_config` | High (the founder's past pain) | Highest: intent is visible at every call site |
-| **B. TenantContext (process dictionary) + Repo wrapper** | Plug stores tenant in process dict; a thin `MyApp.Repo` wrapper auto-opens the transaction and sets config (reusing an open transaction when inside one); dev/test override raises on repo calls outside a scope; Oban workers get a `use TenantedWorker` macro; a `TenantScope.spawn/3` helper for tasks | Low at call sites; discipline lives in one place | Same RLS guarantee; guardrails catch misses in dev |
-| **C. Schema-per-tenant via Ecto prefixes** | Ecto's native `prefix` support | Migration/pool sprawl grows with tenants | Rejected (recorded ADR-0002 v1); revisit only as escape hatch |
+## Consequences
 
-Candidate B is the likely winner *provided* the spike proves the guardrails; the RLS
-policies make even a missed guard a zero-row result, not a leak — the guardrails are for
-debuggability, RLS is the guarantee.
-
-### Spike definition (exit criteria for acceptance)
-
-A minimal Phoenix + Ecto + Oban + LiveView app proving, for the chosen pattern:
-
-1. Request-scoped read/write through the normal repo calls (no per-call wrapping in
-   controllers/LiveViews).
-2. Oban job scoping (tenanted worker macro) incl. a redelivery/idempotency scenario.
-3. LiveView async (`Task.async`/`assign_async`) scoping via the spawn helper —
-   explicitly passing tenant, no accidental inheritance gaps.
-4. Cross-tenant leak test: a forged query with wrong/absent tenant returns zero rows;
-   same test fails loudly if RLS is dropped.
-5. Sandbox-compatible tests + factories seeded in tenant scope.
-6. Pooled connections verified safe (`set_config` transaction-local; no session leakage).
-7. Measured overhead of transaction-per-request on a representative endpoint.
-
-Acceptance requires the founder's review of the spike's ergonomics.
-
-## Consequences (anticipated, pending spike)
-
-- Structural, testable tenancy safety independent of application discipline.
-- Cost: transaction-per-request overhead + one integration module to maintain.
-- Hosting stays swappable (see ADR-0008: Fly app hosting; Postgres hosting is a separate
-  open decision — Fly Postgres vs Neon vs self-hosted — and will follow the spike).
+- **Easier:** no transaction wrapping anywhere; no tenant-setting plumbing in
+  LiveView/Oban/Task processes; the DB stays boring, portable SQL — pairing perfectly
+  with managed Neon (ADR-0008).
+- **Risk accepted:** fail-open instead of fail-closed — a bug that bypasses the scope
+  layer *can* leak, where RLS would have zeroed it. Bounded by the context-API-only
+  rule, the CI leak test, and the revisit trigger.
+- **README.md alignment:** "structurally impossible" is anchored to the architecture:
+  the scoped context layer is the only data access surface — cross-tenant access is
+  impossible *by construction of the app*, enforced in CI.
+- **Downstream effects:** ADR-0005's chatbot context isolation assembles prompts
+  exclusively through this scoped API (one mechanism for the whole product).
