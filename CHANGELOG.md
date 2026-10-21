@@ -9,30 +9,36 @@ breaking changes as well, marked **Breaking** below.
 
 ## [Unreleased]
 
-- **Decision pack 1 — six new ADRs (0002–0007), all Proposed, options laid out with
-  verified 2026-10 facts for founder review:**
-  - **ADR-0002 database/multi-tenancy:** shared schema + Postgres RLS on every tenant
-    table (non-BYPASSRLS app role, `SET LOCAL app.tenant_id` per transaction) proposed
-    over schema-per-tenant and database-per-tenant; large-tenant escape hatch question
-    open.
-  - **ADR-0003 auth/SSO:** in-stack `phx.gen.auth` + Assent (OIDC/OAuth2) now, Zitadel
-    (self-hosted, EU) as the named SAML-time upgrade path; US CIAM rejected on privacy
+- **Decision pack 1 — six ADRs (0002–0007) reviewed and accepted with founder input
+  (all verified against 2026-10 sources):**
+  - **ADR-0002 database/multi-tenancy (accepted):** plain PostgreSQL, tenant_id columns
+    + RLS as fail-closed enforcement — the tenant column is the *model*, RLS the
+    *guarantee*; full Ecto pattern documented (`with_tenant` + `set_config` with
+    transaction-local setting, FORCE RLS, non-BYPASSRLS app role); Supabase/Neon framed
+    as hosting choices (Neon leading for dev-branching/EU), no vendor lock-in.
+  - **ADR-0003 auth/SSO (accepted):** in-stack via `phx.gen.auth` + Ueberauth (founder's
+    known-good tool; Assent verified alive but slow — last release 2025-06 — kept as
+    fallback); Keycloak and Auth0 excluded by founder; Zitadel (default) and WorkOS
+    recorded as the SAML-time IdP options.
+  - **ADR-0004 WhatsApp Business (accepted):** Meta Cloud API direct — founder: "not
+    even a decision"; own thin client generated from Meta's OpenAPI spec (whatsapp_sdk
+    as proof-of-concept, anu as pre-approved fallback), Livebook live-test harness,
+    idempotent Oban ingestion.
+  - **ADR-0005 chatbot basics (accepted):** advice-only, human-confirmed action layer
+    (the wmc-bexio pattern: propose → visualize → apply → track), provider-agnostic
+    adapter with ZDR-only providers, EU AI Act Art. 50 disclosure (in force 2026-08-02),
+    Mistral first candidate, OpenRouter-with-ZDR fallback; bounded model-evaluation
+    spike recorded as open item.
+  - **ADR-0006 payments (accepted):** merchant of record via Paddle — founder's
+    argument: the B2C share (one-man shows, employees paying personally) makes EU
+    consumer VAT via MoR much simpler; verified Paddle's EU-facing entity (Paddle
+    Payments Ltd, Dublin), English-law contracts; own-MoR/Stripe rejected for launch
+    (OSS VAT compliance tail); dogfooding moved to the tenant-facing invoice engine.
+  - **ADR-0007 customer support (accepted):** WhatsApp-first in-product support —
+    mandatory onboarding via WhatsApp Flows (native in-chat multi-step forms, verified
+    with endpoint-connected builds), chatbot-first with founder escalation; Chatwoot
+    self-hosted as the recorded step-2; Zendesk/HelpScout/Intercom excluded on privacy
     posture.
-  - **ADR-0004 WhatsApp Business:** Meta Cloud API direct, no BSP; verified per-message
-    pricing (since 2025-07-01, category-based, 2026-10-01 update), 24h service window
-    and template rules; single product number, inbound-first flows; per-message cost
-    metering proposed.
-  - **ADR-0005 chatbot basics:** provider-agnostic adapter; EU AI Act Article 50
-    transparency (enforceable since 2026-08-02) makes AI disclosure mandatory —
-    limited-risk posture with advice-only + human-confirmed actions; ZDR by contract
-    (Mistral / Azure OpenAI EU / Anthropic / OpenAI compared); provider spike proposed.
-  - **ADR-0006 payments:** Stripe Billing with the Bulgarian company as own merchant of
-    record (vs Paddle MoR at ~5%); VIES reverse-charge invoicing, product-generated
-    invoices (Typst), usage metering from day one; Bulgaria SAF-T phased 2026→~2029,
-    no B2B e-invoicing mandate yet — monitored, not built now.
-  - **ADR-0007 customer support:** WhatsApp-first in-product support with chatbot
-    escalation (v0), Chatwoot self-hosted as the recorded step-2; US helpdesk SaaS
-    rejected on privacy posture.
 
 - **Technology decision accepted (ADR-0001, docs/adr/):** the stack is **Elixir + Phoenix
   + LiveView + PostgreSQL**, Go + HTMX as runner-up fallback; accepted trade-off:

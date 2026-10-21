@@ -1,67 +1,98 @@
-# ADR-0002: Multi-tenancy model — PostgreSQL Row-Level Security
+# ADR-0002: Multi-tenancy — tenant columns on plain PostgreSQL, RLS as fail-closed enforcement
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
-- **Deciders:** Rico Metzger (founder) — decision pending
-- **Related:** ADR-0001 (stack: Elixir + Phoenix + Ecto + PostgreSQL)
+- **Deciders:** Rico Metzger (founder)
+- **Related:** ADR-0001 (stack: Elixir + Phoenix + Ecto + PostgreSQL), hosting ADR (follow-up)
 
 ## Context
 
-The product is a multi-tenant B2B SaaS holding freelancer finance data: invoices, payment
-state, budget windows, actuals, tax-relevant documents. A forgotten `WHERE tenant_id = …`
-must not be able to leak another tenant's data — README.md requires that cross-tenant
-access be *structurally impossible, not merely forbidden*. The stack decision (ADR-0001)
-already fixed PostgreSQL with Ecto; this ADR decides *how tenancy is modelled and
-enforced*.
+The product is a multi-tenant SaaS holding freelancer finance data: invoices, payment
+state, budget windows, actuals, tax-relevant documents. README.md requires that
+cross-tenant access be *structurally impossible, not merely forbidden*.
 
-EU context: tenant data is personal and finance data under GDPR; the less redundancy and
- sprawl the tenancy model creates, the smaller the GDPR surface (per-tenant backups,
-deletion, export).
+The founder's framing (2026-10-21): multi-tenancy is first of all a *model* distinction —
+"normally that is done with a tenant column" — and the database must remain a **normal
+database** with no vendor-specific features, so the project can switch hosting around
+freely. Safety must be structural: forgetting a `WHERE tenant_id = …` must not be able
+to leak another tenant's data.
+
+## Decision
+
+**Shared-schema multi-tenancy on plain PostgreSQL. Every tenant-owned table carries a
+`tenant_id` column (the model), and Row-Level Security is the enforcement layer on top
+of it (the guarantee).** RLS is not an alternative to the tenant column — it is what
+makes the tenant column un-forgettable.
+
+Key properties:
+
+- **Plain PostgreSQL.** RLS has been core Postgres since 9.5. It is not a cloud or
+  vendor feature. It works identically on self-hosted Postgres, Fly Postgres, Neon,
+  or Supabase's Postgres. Nothing in this decision locks hosting.
+- **Fail-closed by construction.** The app connects as a dedicated non-superuser role
+  without `BYPASSRLS`; tables are `ALTER TABLE … FORCE ROW LEVEL SECURITY` (so even the
+  table owner cannot bypass); every policy reads the tenant from the transaction-local
+  setting. If the setting is missing, the policy matches nothing — a forgotten tenant
+  filter returns zero rows instead of another tenant's data.
+- **Postgres flavors are hosting choices, not database choices.** Neon = pure Postgres
+  (branching is attractive for ephemeral dev/CI databases; EU region available).
+  Supabase = Postgres plus PostgREST/JWT conventions (`auth.uid()` patterns) that an
+  Ecto app would not use — acceptable as *plain Postgres hosting*, but we deliberately
+  adopt none of its app-level conventions. The hosting decision is a separate ADR.
+
+## How it is done with normal Elixir tooling (the documented pattern)
+
+1. **Roles.** Migrations run as an owner role. The runtime app role is separate, has no
+   `BYPASSRLS`/superuser, and is the only role used in production (`FORCE ROW LEVEL
+   SECURITY` keeps the owner path closed too).
+2. **Per-request tenant binding.** A Phoenix plug resolves the tenant (from session/
+   token) and opens a transaction that sets the tenant transaction-locally:
+
+   ```elixir
+   def with_tenant(tenant_id, fun) do
+     Repo.transaction(fn ->
+       # `true` = transaction-local, auto-cleared on commit/rollback
+       Repo.query!("SELECT set_config('app.tenant_id', $1, true)", [tenant_id])
+       fun.()
+     end)
+   end
+   ```
+
+   All queries inside inherit the scope. A convenience macro (`tenanted_schema` +
+   `scope/2`) may generate tenant predicates for ergonomics — but the *invariant* is
+   RLS; the macro is sugar, never the guarantee.
+3. **Policy shape.** On every tenanted table:
+
+   ```sql
+   ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+   CREATE POLICY tenant_isolation ON invoices
+     USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+   ```
+
+4. **Guard rails.** `tenant_id UUID NOT NULL` with composite FKs and composite indexes
+   `(tenant_id, …)` everywhere; migrations checklist item: every new tenanted table
+   ships with its policy in the same migration. A dedicated test (and a Livebook
+   recipe) proves a query with no tenant context returns zero rows and a foreign-tenant
+   lookup is empty. No cross-tenant foreign keys, ever.
 
 ## Options considered
 
-| Model | Isolation strength | Ops cost at N tenants | Verdict |
+| Option | Isolation | Solo-ops cost | Verdict |
 |---|---|---|---|
-| **Shared schema, `tenant_id` + RLS on every table** | Highest: isolation lives in the database. Even a query that forgot the tenant predicate cannot cross tenants. App connects as a non-superuser role with `FORCE ROW LEVEL SECURITY`; every transaction sets `SET LOCAL app.tenant_id` | Constant: 1 schema, N rows | **Recommended** |
-| Shared schema, application-layer scoping only (Ecto query prefixes, no RLS) | Weakest: one missing `where: [tenant_id: …]` in any code path (including future ad-hoc SQL, reporting queries, admin tools) leaks across tenants | Constant | Rejected — fails the "structurally impossible" bar |
-| Schema-per-tenant | High: hard boundary per tenant; but Ecto migrations and connection pooling (`pgbouncer`, prepared statements) get messy with dynamic schema paths | Linear: N schemas × M migrations | Rejected — migration and pool sprawl |
-| Database-per-tenant | Strongest blast radius; cleanest deletion story | Linear: N databases × M migrations × backup/monitoring × connection budget | Rejected for now; escape hatch if a large B2B tenant demands it |
+| Shared schema + `tenant_id` + RLS (this decision) | Highest: fail-closed at the DB | Low | **Accepted** |
+| Shared schema + `tenant_id` column only (no RLS) | Lowest: correctness depends on every query remembering the filter | Lowest | Rejected — the one bad query is enough |
+| Schema-per-tenant | High, but N schemas × M migrations sprawl | Medium | Rejected |
+| Database-per-tenant | Strongest blast radius | High | Rejected for now |
+| Supabase/Neon "as the database" | N/A — they *are* Postgres; not a tenancy model | — | N/A — hosting only; see hosting ADR |
 
-### What the RLS model requires (feasibility, verified against Ecto/Postgres practice)
+## Consequences
 
-- Postgres RLS is mature (since 9.5) and fully supported through Ecto: the app sets
-  `tenant_id` per transaction via a custom Ecto connection hook; RLS policies reference
-  `current_setting('app.tenant_id')`.
-- The application DB role must have **no** `BYPASSRLS` and **no** superuser credentials
-  in production; `FORCE ROW LEVEL SECURITY` also binds the table owner.
-- Migrations and seeding run as a separate role that *can* bypass RLS (or with policies
-  disabled in the migration path) — a normal, well-understood pattern.
-- Pooling: use a transaction-pooled setup (Postgrex/pool size or pgbouncer in
-  transaction mode) with `SET LOCAL` (per-transaction, auto-reset) — never `SET`
-  (session state leaks across pooled checkouts).
-- Soft-delete/audit layers (append-only change log) sit naturally on top: the audit
-  table gets the same RLS policy.
-
-## Decision (proposed)
-
-Shared schema with `tenant_id` on every tenant-owned table, RLS policies on every
-tenant-owned table, app role without BYPASSRLS, `SET LOCAL app.tenant_id` per
-transaction, migrations via a privileged role.
-
-## Consequences (if accepted)
-
-- **Easier:** structural tenancy safety; single migration pipeline; single backup story;
-  tenant deletion = row deletion (satisfies GDPR erasure without schema surgery).
-- **Harder:** every table must carry `tenant_id` and an RLS policy from day one
-  (discipline: a schema-check in CI); connection hooks add a small per-transaction cost;
-  debugging requires remembering the RLS role in use.
-- **Deferred:** hosting/Postgres provider choice (Fly/Hetzner/managed EU provider) is a
-  separate ADR; vector/extension needs (pgvector) unknown until the chatbot ADR-0005
-  lands.
-
-## Open questions for the founder
-
-1. Accept the RLS model as proposed? (Alternative: schema-per-tenant for perceived
-   simplicity of per-tenant export — rejected above on ops cost.)
-2. Should a *large enterprise tenant* isolation escape hatch (database-per-tenant) be
-   kept explicitly in the roadmap or dropped from the record?
+- Tenancy leaks become impossible-by-construction, provable in tests, independent of
+  application code discipline.
+- Slight per-request transaction overhead (`set_config` inside a transaction); acceptable
+  for a latency-tolerant finance SaaS.
+- Hosting stays swappable; Neon's branching and EU regions make it the leading
+  *hosting* candidate to be weighed in the hosting ADR (self-hosted/Hetzner remains the
+  sovereignty alternative).
+- Any future managed-Postgres migration keeps all RLS policies intact because they are
+  plain SQL.

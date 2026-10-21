@@ -1,91 +1,93 @@
-# ADR-0005: Chatbot integration basics — provider-agnostic adapter, ZDR, EU AI Act posture
+# ADR-0005: Chatbot basics — advice-only, human-confirmed action layer, ZDR + EU AI Act posture
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
-- **Deciders:** Rico Metzger (founder) — decision pending
-- **Related:** ADR-0001 (stack), ADR-0004 (WhatsApp channel), ADR-0002 (tenancy)
+- **Deciders:** Rico Metzger (founder)
+- **Related:** ADR-0001 (stack), ADR-0002 (tenancy), ADR-0004 (WhatsApp channel)
 
 ## Context
 
 The chatbot reads tenant finance data (invoices, payments, budgets) and answers through
-WhatsApp. Two hard constraints from the plan: **ZDR** (zero data retention — prompt
-content must not be stored/used for training by the LLM vendor) and **EU rules**. The
-founder is a Bulgarian company; the chatbot processes tenants' personal finance data,
-so GDPR applies, and as a deployer of an AI system the EU AI Act applies.
+WhatsApp. Hard constraints: **ZDR** (the LLM vendor must not retain or train on prompt
+content), **EU rules** — the founder is a Bulgarian company and the **EU AI Act is
+directly in force for transparency obligations since 2026-08-02** — and the founder's
+conviction that the product's actions must be *human-advised*, never autonomously
+applied.
 
-**Verified facts (checked 2026-10):**
+Founder direction (2026-10-21), modeled on his wmc-bexio work: build a **layer on top
+for the actions** — visualize proposed actions, apply them explicitly, keep track of
+what was applied. And on providers: Mistral is naturally promising if it can compete;
+models must be evaluated; fallback is **OpenRouter with ZDR**.
 
-- **EU AI Act, Article 50 (transparency) is enforceable since 2026-08-02.** Deployers
-  of chatbots must inform users that they are interacting with an AI system (unless it
-  is obvious to a reasonably informed, observant user). Penalties scale to €15M/3%
-  turnover. A finance-advice chatbot on WhatsApp is *not obviously* AI → **disclosure
-  is mandatory**: onboarding message and/or first AI reply must state it. The system is
-  **limited-risk** (not high-risk Annex III: no decisions on creditworthiness, no
-  employment/essential services) as long as it *advises* and does not autonomously
-  execute consequential financial/legal decisions — human confirmation stays in the
-  loop for anything that changes invoices, payments or filings.
-- **GDPR note:** automated decisions with legal/significant effects are Art. 22
-  territory; the chatbot recommends, the human decides — this posture also keeps AI Act
-  exposure at limited-risk.
-- **ZDR is contractual, per provider.** No-training-on-API-data by default: Anthropic
-  API, OpenAI API (with ZDR terms / enterprise), Mistral (EU provider, EU-hosted, DPA
-  published). Azure OpenAI adds EU Data Boundary residency. A DPA with each used
-  provider is required (Art. 28 GDPR).
-- **Mistral** is the EU-native candidate (EU-hosted inference, published DPA, AI Act
-  compliance center) — a natural "EU-sovereign" default and strong optics for B2B
-  customers.
+## Decision
 
-## Options considered
+**The chatbot is advice-only. It proposes; it never applies. Every state-changing action
+flows through an explicit, tracked application layer with a human confirmation step.**
+Provider access goes through a thin, provider-agnostic adapter; every provider in the
+candidate list must carry a contractual ZDR/no-training commitment.
 
-| Provider | EU residency option | ZDR/no-training | Notes |
+### The action layer (the architectural center of this ADR)
+
+1. **Propose.** The chatbot (or a scheduled agent) produces structured *action
+   records*: type (e.g., categorize payment, draft invoice correction, set budget
+   window), payload, reasoning trace, confidence.
+2. **Visualize.** Proposed actions surface in a LiveView review queue (and as an
+   in-chat summary card). The user sees exactly what would change — before/after
+   states, not just prose.
+3. **Apply.** An explicit user confirmation applies the action through the same domain
+   modules the UI uses — the chatbot has no privileged write path.
+4. **Track.** Applied actions land in an append-only log with actor (user vs. agent),
+   timestamp, before/after, and the originating conversation. Domain invariants stand
+   (issued invoices are never edited; corrections are new records).
+
+This design simultaneously delivers: human oversight (AI Act), auditability (finance
+SaaS), reversibility bookkeeping, and a clean test surface (the action layer is pure
+domain logic, chatbot-independent).
+
+### EU AI Act posture (limited-risk system)
+
+- The product's AI is a **limited-risk AI system** under Regulation (EU) 2024/1689:
+  no Annex III high-risk category applies (it informs, it does not decide or score).
+- **Article 50 transparency is enforceable since 2026-08-02** and applies regardless of
+  risk class: users must be informed that they are interacting with an AI system.
+  Concretely: the chatbot discloses it is AI-assisted at chat start and on demand; the
+  app labels AI-generated content. This is product copy, not infrastructure.
+- Provider due diligence: we require a DPA and no-training commitments from the model
+  vendor (Art. 50's supply-chain expectations; providers must in turn disclose AI in
+  their interfaces).
+- Reassessment trigger: if the chatbot's role expands toward autonomous decisions or
+  scoring, the classification review reopens (recorded here as the tripwire).
+
+### Provider candidates (adapter behind, all under ZDR contracts)
+
+| Provider | EU posture | ZDR | Assessment |
 |---|---|---|---|
-| **Mistral API** | Yes — EU-hosted | Yes (DPA, no training on customer data) | EU sovereign story; model quality for this task to be evaluated in a spike |
-| Azure OpenAI (EU Data Boundary) | Yes | Yes (no training; ZDR options) | Strongest paper trail; enterprise-accepted; US-owned |
-| Anthropic API | EU endpoint available; residency limits to verify per region | Yes (API data not trained on by default; ZDR tiers) | Strong reasoning models; founder-favored ecosystem |
-| OpenAI API | EU residency option exists | Yes with ZDR terms | Big corpus; ZDR must be contractually pinned |
-| OpenRouter (ZDR-modeled providers) | Depends on backend | Router-level ZDR configuration | Adds a processor; flexibility for spikes |
+| **Mistral** | EU-native, EU residency, published DPA, no training on customer data (verified 2026-10) | Yes, contractually | **Default first candidate** — founder's lean; evaluate model quality on finance-domain tasks |
+| **OpenRouter (ZDR-modeled providers)** | Routing layer; ZDR depends on the routed provider's terms | Configurable per provider | **Fallback** if Mistral's models are too weak on our tasks |
+| **Azure OpenAI (EU region)** | EU residency, strongest enterprise paper trail | Enterprise terms | Alternative with the best compliance story |
+| **Anthropic / OpenAI APIs** | US processors; Anthropic trains not on API data by default | Terms-dependent | Usable only with signed ZDR terms |
 
-**Architectural decision (independent of provider choice):** one adapter module defines
-the chatbot's LLM interface; providers plug in behind it. Cost/rate/log fields and the
-system prompt stay ours. This is the ADR-0001 "ZDR adapter" promise made concrete.
+**Open item (recorded):** a bounded model-evaluation spike — the same finance-domain
+task set across Mistral's current models, one OpenRouter-routed alternative, and Azure
+OpenAI — picks the launch provider. The adapter makes this a config change, not a
+rewrite.
 
-### What the basic (v1) integration is
+### Data flows
 
-1. **Disclosure** (AI Act Art. 50): onboarding message states the assistant is AI;
-   footer/first-token disclosure in AI replies.
-2. **Scope:** read-only Q&A over the tenant's own data (budgets, invoice status,
-   what-if math). No autonomous actions in v1 — mutations (e.g. "mark invoice paid")
-   are proposed by the bot and confirmed by the human in chat.
-3. **Data minimization:** prompts carry structured tenant context selected by us (not
-   raw dumps); no cross-tenant context ever (RLS, ADR-0002).
-4. **Logging:** store our own conversation log in the tenant database (needed for
-   support/audit); the provider stores nothing (ZDR). Retention policy for chat logs to
-   be set with the founder.
-5. **Escalation:** handoff path to human support (ADR-0007).
+- Chat logs live in **our Postgres** only (tenant-scoped, per ADR-0002). The LLM vendor
+  receives prompt content per request under ZDR; no vendor-side storage.
+- Retention of our own chat logs is a GDPR storage-limitation question — **open item**:
+  proposal is 12 months rolling, tied to accounting periods; founder to confirm.
+- Context assembly (tenant docs, summaries) happens in-stack; only the composed prompt
+  leaves the boundary.
 
-## Decision (proposed)
+## Consequences
 
-Provider-agnostic adapter (one module, one behaviour); start with **Mistral or
-Azure OpenAI (EU)** as the first provider — final pick in a bounded spike comparing
-answer quality on finance-domain tasks — with Anthropic/OpenAI kept switchable behind
-the adapter. Limited-risk AI Act posture: mandatory AI disclosure, advice-only + human
-confirmation for actions, own conversation log, provider ZDR contracts (DPA) in place
-before launch.
-
-## Consequences (if accepted)
-
-- **Easier:** provider can change without touching chat flows; EU-sovereign option
-  available; compliance story is short and provable to B2B customers.
-- **Harder:** prompt-engineering and context-selection live with us; disclosure copy and
-  action-confirmation UX are product surfaces; per-token costs must be metered per
-  tenant (feeding ADR-0006).
-- **Deferred:** voice/multimodal, agentic tool-calling beyond read-only, fine-tuning —
-  all future ADRs if wanted.
-
-## Open questions for the founder
-
-1. First provider preference: Mistral (EU sovereign) vs Azure OpenAI (paper trail) — or
-   run the spike and decide on quality?
-2. Confirm the v1 scope: read-only advice + human-confirmed actions?
-3. Chat-log retention period in our own DB (GDPR storage limitation — e.g. 12 months?
-   tied to accounting periods?)
+- The AI Act posture is cheap and durable: disclosure + human oversight + contractual
+  ZDR covers the limited-risk obligations.
+- No autonomous writes means the worst a hallucination can do is a wrong *proposal* —
+  bounded by the review queue.
+- Provider swaps are configuration, enabling the evaluation spike to be rerun cheaply
+  as models improve (Mistral's trajectory is the founder's stated bet).
+- Slightly more engineering than "just call the API" — the action layer is the product,
+  not overhead.

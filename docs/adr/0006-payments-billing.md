@@ -1,74 +1,77 @@
-# ADR-0006: Payments — provider, cost structure, billing model
+# ADR-0006: Payments — merchant of record via Paddle
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
-- **Deciders:** Rico Metzger (founder) — decision pending
-- **Related:** ADR-0004 (WhatsApp per-message costs — usage line), ADR-0002 (tenancy:
-  billing data is tenant data)
+- **Deciders:** Rico Metzger (founder)
+- **Related:** ADR-0004 (WhatsApp usage costs — metering input), ADR-0002 (tenancy)
 
 ## Context
 
-The seller is a Bulgarian company (EU; Bulgaria adopted the euro on 2026-01-01 — Stripe
-offers EUR/BGN dual pricing for Bulgaria during the transition). Buyers are EU
-freelancers and accountants (B2B). Costs that the pricing model must eventually cover:
-WhatsApp per-message charges (ADR-0004), LLM tokens (ADR-0005), hosting.
+The seller is a Bulgarian company (EU; Bulgaria adopted the euro 2026-01-01). Buyers
+split into two very different groups:
 
-**Verified facts (checked 2026-10):**
+- **B2B:** accountants' firms, companies buying for employees — VAT reverse charge
+  applies with a validated VAT ID.
+- **B2C:** one-man freelancer shows and *employees of third parties paying personally*
+  — consumer sales where EU VAT on digital services applies at the consumer's country
+  rate.
 
-- **No B2B e-invoicing mandate in Bulgaria yet** — the digital-reporting push runs
-  through **SAF-T**: phased from 2026-01-01 (largest taxpayers first), reaching small
-  companies by ~2029; a clearance/NEFS e-invoicing model is consulted but not enacted.
-  So we issue regular invoices from the Bulgarian company; structured e-invoicing is a
-  monitored future obligation, not a build-now item.
-- **EU B2B VAT:** reverse charge with a validated foreign VAT ID (VIES check) is the
-  normal B2B case; the merchant-of-record route outsources this entirely at a margin.
-- **Pricing market:** Stripe is live in Bulgaria (en-bg, EUR/BGN); Paddle (US MoR with
-  EU entities) and Lemon Squeezy (now Stripe-owned) are the merchant-of-record options;
-  Mollie is an EU processor alternative with cheap SEPA.
-- Rough fee picture (to be pinned at implementation): Stripe EU cards ≈ 1.5% + fixed
-  fee; Paddle MoR ≈ 5% + fixed fee (buys VAT/compliance/invoicing); Mollie ≈ €0.29 +
-  method fees, SEPA direct debit very cheap for renewals.
+The founder's decisive argument: **a meaningful share of buyers will be B2C, and for
+consumer VAT across the EU a merchant of record is much simpler** — with our own MoR we
+would need EU-wide OSS registration and returns; a MoR carries that burden contractually.
 
-## The structural question: who is the merchant?
+## Decision
 
-| Model | How it works | Fees | Compliance burden on us | Verdict |
-|---|---|---|---|---|
-| **Processor + own billing (Stripe Billing)** | We are the merchant of record: our company invoices the customer (reverse charge for B2B EU), Stripe processes the card/SEPA | ~1.5% + fixed | We own VAT registration checks (VIES), invoice issuance (our Bulgarian legal requirements), dunning | **Recommended** — the product *is* a finance tool; invoices we generate are also a feature demo, and the margin difference is large at scale |
-| Merchant of record (Paddle) | Paddle sells to the customer on our behalf, handles VAT, invoices, tax | ~5% + fixed | Minimal — but Paddle becomes the seller; our customer has a Paddle relationship, and Paddle is a US-headquartered processor of all customer data | Viable fallback if tax admin becomes a burden |
-| Processor + external billing layer (Mollie + billing lib) | EU processor, own billing | SEPA-cheap renewals | Same as Stripe route | Alternative if SEPA-heavy B2B mix emerges |
+**Use a merchant of record: Paddle.** The founder's recall that Paddle is EU-based is
+essentially right for the relevant entity, verified 2026-10-21:
 
-### Billing model options (product structure)
+- **Paddle** operates as MoR for digital products — it processes payment, handles
+  VAT/GST/sales tax "where it's a legal requirement", across 300+ markets, and issues
+  the buyer-facing invoice.
+- Legal structure: parent **Paddle.com Market Ltd. (London, UK)**; the MoR processing
+  entity for EU-context transactions is **Paddle Payments Limited (Dublin, Ireland,
+  CRO 572448)** for non-US buyers. Contracts are governed by English law; Brexit has no
+  effect on the supplier agreement (contracts are national, not supranational).
+- **Paddle Billing** (the current platform) supports subscriptions, localized checkout,
+  webhook events, and B2B VAT reverse charge when the customer's VAT ID is collected.
 
-| Element | Options | Lean |
-|---|---|---|
-| Base plan | Flat monthly per user/tenant; or per client-count tiers | Flat monthly, one plan to start |
-| Usage pass-through | WhatsApp messages + LLM tokens metered per tenant (we know both exactly from ADR-0004/-0005 metering) | Metered add-on above a fair-use allowance, or rounded into the flat price at launch |
-| Annual | Monthly only vs monthly+annual (annual = 1 invoice, cheaper dunning, B2B likes it) | Add annual at launch |
+### The alternative we rejected (and why)
 
-## Decision (proposed)
+| Option | Fees | Tax/compliance burden | Verdict |
+|---|---|---|---|
+| **Paddle (MoR)** | ~5% + fixed per transaction (all-in: payments + compliance) | None for us | **Accepted** |
+| Own MoR via Stripe/Mollie | ~1.5% + fixed | We register for EU OSS, file consumer VAT returns EU-wide, handle invoicing compliance | Rejected for launch — the B2C share makes the compliance tail heavy for a solo founder |
+| Lemon Squeezy (MoR) | ~5%+ | Same MoR relief | Rejected — smaller platform, weaker B2B invoicing story than Paddle |
 
-**Stripe Billing, we are the merchant of record**: subscriptions (monthly + annual),
-card + SEPA, VIES-validated reverse charge for B2B customers, invoices generated by the
-product itself (Typst, per ADR-0001 — our own invoices are the first dogfooded invoice
-pipeline). Usage (WhatsApp + tokens) metered from day one in the database, even if
-priced as flat at launch. Paddle stays recorded as the fallback if own-merchant tax
-admin proves heavier than expected.
+The ~3.5pp fee premium is the price of outsourcing EU consumer VAT compliance — the
+founder accepts it deliberately for the B2C segment.
 
-## Consequences (if accepted)
+### What we consciously give up
 
-- **Easier:** lowest fees; full control of the invoice (branding, Bulgarian legal
-  fields, future SAF-T readiness); invoice generation is already a core product feature.
-- **Harder:** we own VAT/invoicing correctness (VIES check flow, reverse-charge invoice
-  wording, Bulgarian accounting export); dunning/retry logic to build (Stripe Billing
-  covers retries).
-- **Deferred:** non-EU expansion (would trigger non-union OSS VAT registration —
-  separate analysis when it matters), SAF-T structured reporting (monitor ~2029
-  phase-in).
+- **Dogfooding:** Paddle issues buyer invoices, so our own sales invoices are not
+  generated by our product. Mitigation: the product's *tenant-facing* invoice engine
+  (freelancers invoicing their clients) remains fully ours — the dogfooding argument
+  moves there.
+- Invoicing detail control (layout, numbering scheme) — Paddle's invoiced-business
+  terms cover B2B buyers wanting a proper invoice.
+- Margin on small plans (percentage fees bite at low price points) — pricing ADR
+  follow-up must model this; a floor price below which Paddle's fixed fees dominate.
 
-## Open questions for the founder
+### Cost / billing structure (recorded direction)
 
-1. Confirm: own merchant of record via Stripe (vs Paddle's ~5% all-in)?
-2. Launch pricing: flat monthly only, or flat + metered usage pass-through?
-3. Annual plans at launch: yes/no?
-4. Payment methods for launch: card only, or card + SEPA direct debit (SEPA fits B2B
-   renewals but adds mandate handling)?
+- Subscription plans sized for freelancers; the WhatsApp per-message COGS (ADR-0004) is
+  metered per tenant and either bundled into tiers or passed through as a usage line —
+  **open item**: founder decides at pricing time.
+- Paddle webhooks (subscription lifecycle, payment status) drive our billing records and
+  tenant provisioning/entitlements.
+- **Open items:** annual plans at launch? SEPA direct debit for B2B renewals (Paddle
+  supports) vs card-only?
+
+## Consequences
+
+- Solo-founder VAT compliance burden for consumer sales: near zero.
+- Revenue margin reduced by ~5% — accepted trade-off, revisit if/when a large B2B
+  contract makes own-MoR economics compelling (Stripe remains the documented fallback).
+- Billing data (names, emails, VAT IDs) flow to Paddle as processor — added to the
+  GDPR processor register with a DPA.
+- Checkout and tax handling are Paddle-branded — accepted; localization comes free.

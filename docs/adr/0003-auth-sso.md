@@ -1,57 +1,66 @@
-# ADR-0003: Authentication and SSO — in-stack OIDC first, IdP at B2B-SAML time
+# ADR-0003: Authentication and SSO — in-stack now; Zitadel or WorkOS at SAML time
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
-- **Deciders:** Rico Metzger (founder) — decision pending
-- **Related:** ADR-0001 (stack), ADR-0002 (tenancy — identity must map to tenant)
+- **Deciders:** Rico Metzger (founder)
+- **Related:** ADR-0001 (stack), ADR-0002 (tenancy — identity maps to tenant)
 
 ## Context
 
-Users are freelancers and accountants (B2B, EU). Login needs: email/password or magic
-link as baseline, social login (GitHub, Google) via OAuth2/OIDC, and — later, when the
-first B2B SAML customer appears — SAML SSO. All identity data is personal data under
-GDPR; every third party that sees credentials or identity claims must be justified.
-EU AI Act is irrelevant here; EU data-residency posture matters for the identity store.
+Users are freelancers and accountants (EU). Login needs: email/password baseline, social
+login (GitHub, Google) via OAuth2/OIDC, and — later, at the first B2B SAML customer —
+SAML SSO. Identity data is personal data under GDPR; every third party that sees logins
+must be justified.
 
-## Options considered
+Founder constraints (2026-10-21):
 
-| Option | Fit now | Fit at B2B-SAML time | Privacy posture | Verdict |
-|---|---|---|---|---|
-| **In-stack: Phoenix `phx.gen.auth` + Assent (OIDC/OAuth2)** | Zero extra infrastructure; identity lives in the same Postgres, same RLS regime, same backups; Assent is the maintained Elixir multi-provider framework (OAuth 1.0/2.0, OIDC strategies; GitHub, Google work out of the box) | SAML = real work later | Best: no third party sees tenant identity data | **Recommended start** |
-| Zitadel (self-hosted, EU, built-in orgs/tenancy) | One more service to run (it *is* a whole product) | Full OIDC + SAML, multi-tenant orgs as a first-class concept, EU-native | Good (self-hosted) | Recommended upgrade path when SAML is real |
-| Keycloak / authentik (self-hosted) | Heavy ops for a solo founder; Java/JVM sidecar | Full OIDC/SAML/federation | Good (self-hosted) | Rejected now — ops weight without current need |
-| Auth0 / WorkOS / Clerk (US SaaS) | Fastest SAML | Fast SAML | US processors; SCCs needed; identity is the most sensitive data in the system | Rejected on privacy posture for now |
-| Managed EU IdP SaaS | — | — | Varies | Not needed at current scale; revisit at SAML time |
+- Auth0 is **too bloated** — excluded.
+- Keycloak is out: running a Java IdP in the open is exactly the ops weight this project
+  avoids.
+- The candidate IdPs are **Zitadel** and **WorkOS**.
+- Library question: is Assent still alive? The founder's known-good experience is
+  Ueberauth.
 
-### Feasibility notes
+## Decision
 
-- `phx.gen.auth` generates the password/session/magic-link baseline with LiveView
-  support — this is the Phoenix-batteries-included path, consistent with the stack
-  rationale in ADR-0001.
-- Assent handles the OIDC/OAuth2 strategies; it needs no separate service.
-- Session model: server-side sessions (ETS/database) in the same database; MFA can be
-  added in-stack later (TOTP) — no external dependency required.
-- The SAML bridge later is bounded work: Zitadel can sit in front *only* for SAML
-  customers (proxy OIDC) without migrating everyone.
+**Start in-stack: `phx.gen.auth` baseline + Ueberauth (or Assent) for social OIDC.
+Identity lives in our own Postgres — no third party sees logins. At the first B2B SAML
+customer, evaluate Zitadel first (default candidate), WorkOS second.**
 
-## Decision (proposed)
+### Library status (verified 2026-10-21, hex.pm)
 
-Start in-stack (`phx.gen.auth` + Assent), identity stored in the product database under
-the same tenancy and privacy regime. When the first SAML customer materializes, stand up
-Zitadel (self-hosted, EU) as the dedicated IdP for B2B federation — not a migration of
-the existing user base.
+| Library | State | Notes |
+|---|---|---|
+| **Ueberauth** | Stable, long-established plug-based OAuth/OIDC framework; strategy ecosystem (`ueberauth_github`, `ueberauth_google`) | Founder's known-good tool; default choice |
+| **Assent** | Alive but slow-moving: last release **June 2025**, ~2.3M total downloads; strategy framework usable independently of Pow | Solid OIDC correctness (PKCE, JWKS); alternative if Ueberauth's model chafes |
 
-## Consequences (if accepted)
+Both are acceptable; **Ueberauth is the default** (founder familiarity, strategy
+ecosystem), Assent is the documented fallback. Either way the strategy layer sits behind
+a thin internal module so swapping strategies is not an app-wide event.
 
-- **Easier:** one service to run; identity data never leaves the product's Postgres;
-  password reset, sessions and audit logging share the app's existing machinery.
-- **Harder:** no SAML on day one (accepted — no customer demands it yet); in-stack auth
-  code is the app's responsibility (phx.gen.auth covers the dangerous parts).
-- **Trade-off recorded:** if B2B SAML demand arrives early, the Zitadel path is the
-  planned answer, not a re-architecture.
+### What "in-stack" means concretely
 
-## Open questions for the founder
+- `phx.gen.auth` generates email/password accounts, session tokens, and mail — audited
+  and owned.
+- Social login = OAuth2/OIDC callbacks creating/linking local identities. Email is the
+  identity join key; verification required.
+- Sessions as server-side tokens in Postgres (revocable, auditable).
+- Magic-link login optional, reusing the same token machinery.
+- Per ADR-0002: the user record belongs to a tenant (freelancer) or maps into one
+  (accountant) — the plug resolves tenant before `with_tenant/2` opens scope.
 
-1. Social providers at launch: GitHub + Google + email/magic link — is that the set?
-2. Password + social coexistence (recommended), or social-only?
-3. Confirm Zitadel as the *named* future IdP, or leave the SAML-time choice open?
+### IdP options for the SAML-time upgrade (recorded, not decided)
+
+| Option | Fit | Trade-off |
+|---|---|---|
+| **Zitadel** (self-hosted EU, or Zitadel cloud EU region) | Organizations as a first-class concept — natural for B2B tenants; OIDC+SAML; EU-native | One more service to run (but Go binary, lighter than Keycloak) |
+| **WorkOS** | Fastest SAML integration, purpose-built for SaaS | US processor — personal data leaves the EU; privacy trade-off needs justification |
+| Keycloak | — | Excluded by founder (ops weight in the open) |
+| Auth0 | — | Excluded by founder (bloated) |
+
+## Consequences
+
+- Zero extra infrastructure at launch; no third party sees logins (privacy criterion).
+- SAML is real work later — accepted, because B2B SAML customers do not exist yet.
+- If/when Zitadel or WorkOS is added, in-stack identities migrate via OIDC linking; the
+  in-stack account remains the fallback login.

@@ -1,70 +1,78 @@
-# ADR-0007: Customer support — WhatsApp-first, no heavyweight helpdesk
+# ADR-0007: Customer support — WhatsApp-first in-product, Chatwoot as the recorded step-2
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
-- **Deciders:** Rico Metzger (founder) — decision pending
-- **Related:** ADR-0004 (WhatsApp Cloud API — the channel support would share),
-  ADR-0005 (chatbot escalation path)
+- **Deciders:** Rico Metzger (founder)
+- **Related:** ADR-0004 (WhatsApp Cloud API — shared channel), ADR-0005 (chatbot escalation)
 
 ## Context
 
 Solo-founder support for a B2B SaaS whose users already live in the product's WhatsApp
-chat. Support volume at launch is small and personal; the customers' natural support
-surface is the channel they already use — WhatsApp. Any helpdesk that *doesn't* speak
-WhatsApp would force a second channel; any US-hosted helpdesk sees tenant support
-content (privacy posture from ADR-0001: every third party that can see tenant data must
-be justified).
+chat. The founder's framing: support that matches the product's philosophy — **guide
+users with the mandatory initial forms, then handle the rest conversationally** — is
+naturally in-product, because the support conversation and the product's context are the
+same channel.
 
-**Verified facts (checked 2026-10):**
+## Decision
 
-- Open-source/self-hosted helpdesks that integrate **WhatsApp natively**: **Chatwoot**
-  (built around messaging; WhatsApp via the same Meta Cloud API — self-host free,
-  cloud per-agent pricing, "Captain" AI add-on) and **Zammad** (mature full ticketing;
-  hosted in Germany available). **FreeScout** (lightweight shared inbox, email-first).
-- Hosted/EU SaaS: **Crisp** (France), hosted **Chatwoot**. Hosted/US: Zendesk,
-  Intercom, Help Scout ($25–75/user/mo) — all strong, all US processors, all priced per
-  seat.
-- **Peppermint**, a common self-hosted pick, was archived by its owner 2026-07-17 —
-  excluded from the shortlist.
+**Build support into the product's WhatsApp channel first: structured onboarding via
+WhatsApp Flows, conversational support after, chatbot-first with escalation to the
+founder. No helpdesk product at launch.**
 
-## Options considered
+### How good is in-product WhatsApp support, honestly?
 
-| Option | WhatsApp fit | Privacy | Cost | Verdict |
-|---|---|---|---|---|
-| **In-product support (v0): support = the product's own WhatsApp chat** | Native — support conversations *are* product conversations; chatbot answers known issues, escalates to the founder's inbox | Best: zero new processors; nothing leaves our DB | €0 | **Recommended start** — for a solo founder, support volume is tiny; the chatbot handoff (ADR-0005) already exists |
-| **Chatwoot, self-hosted** (on the same EU infra) | Native WhatsApp integration; team inbox, labels, SLAs when staff grows | Good: self-hosted, no new processor if we run it | Free + ops (~one more container) | **Planned step 2** when support volume justifies a team inbox |
-| Zammad, self-hosted | Email+channels; WhatsApp integration less central | Good | Free + heavier ops | Alternative at step 2 if ticketing (over messaging) fits better |
-| Crisp (FR SaaS) | WhatsApp channel available | EU processor, DPA | Per-seat SaaS | Reasonable zero-ops middle ground |
-| Zendesk / Intercom / Help Scout (US SaaS) | Good | US processors of support content | $20–90/agent/mo | Rejected for now on privacy posture and cost |
+**Strong for this product, by construction:**
 
-### Feasibility of the v0 path
+- The user never leaves the channel they already use for the product itself — zero
+  new-context cost for a support request.
+- **WhatsApp Flows** (verified 2026-10-21, Meta developer docs) are *native, structured,
+  multi-step forms that run inside the chat* — text inputs, dropdowns, checkboxes,
+  date pickers — instead of linking out to a web page. Endpoint-connected Flows submit
+  structured form data to our own endpoint. This is exactly the "mandatory initial
+  forms" mechanism: onboarding (business data, tax setup, invoicing preferences) becomes
+  a guided in-chat flow with validation, not a PDF-of-questions.
+- Support requests arrive with the tenant's full context (plan, onboarding state, recent
+  actions) attached — something a standalone helpdesk has to be fed.
+- The chatbot (ADR-0005) handles first-line answers from product docs; unresolved
+  threads escalate to the founder's human inbox with full transcript.
 
-- The WhatsApp number is ours (ADR-0004); inbound support messages already flow through
-  our webhook with idempotent ingestion. Support routing is a message-classification
-  rule ("this user needs a human" / bot self-identifies limits) plus a LiveView
-  "founder inbox" surface — the realtime WhatsApp → LiveView story from ADR-0001 makes
-  this cheap.
-- Migration path is clean: Chatwoot can attach to the *same* Cloud API number later;
-  history stays ours either way (export from our DB).
+**Known limits (accepted at launch scale):**
 
-## Decision (proposed)
+- No SLA tooling, no ticket state machine, no per-agent analytics beyond our own log.
+- The founder is the only human agent — the "inbox" is a LiveView over our conversation
+  records, replies via the same Cloud API client.
+- Historical transcript UI beyond chat is ours to build — but conversation records are
+  already first-class data in our Postgres.
 
-Start in-product: support lives in the same WhatsApp conversation, chatbot first,
-human escalation into a minimal founder inbox (LiveView). Add **Chatwoot self-hosted**
-as the recorded step-2 upgrade when a second person or real ticket volume appears. No
-US helpdesk SaaS for now.
+These limits are exactly why step 2 is recorded rather than dismissed:
 
-## Consequences (if accepted)
+### Step 2 (when volume justifies it): Chatwoot, self-hosted
 
-- **Easier:** zero new processors, zero new channel, zero seat fees; the support
-  transcript is tenant data we already hold under the same retention rules.
-- **Harder:** support UX (labels, macros, SLAs, multi-agent) must grow with us — the
-  Chatwoot step-2 plan exists precisely for that moment.
-- **Trade-off recorded:** self-hosting Chatwoot later adds one more service; accepted
-  as it arrives with a real second person.
+- **Chatwoot** (open source, can self-host on EU infra, WhatsApp Cloud API integration
+  native) becomes the agent surface: team inbox, assignment, SLAs, canned responses.
+- **Zammad** is the fallback if ticket-centric workflows fit better later.
+- **Crisp** (French SaaS) is the SaaS alternative if self-hosting weight is the
+  bottleneck.
+- Zendesk / Help Scout / Intercom: **excluded** — US processors, personal data of EU
+  users off-EU by default; the privacy criterion applies to support conversations too
+  (they carry the same tenant data as the product itself).
 
-## Open questions for the founder
+### Onboarding design (the Flows layer)
 
-1. Confirm v0 in-product support (vs starting with Chatwoot right away)?
-2. Should the support inbox also be reachable by email (most SaaS users expect
-   support@ — small addition via SMTP in-stack)?
+- Flow 1 — account setup: business identity, VAT status, invoicing details (the
+  "mandatory initial forms").
+- Flow 2 — first invoice/budget walkthrough (guided, form-validated).
+- Flow payloads submit to our Flows endpoint → validated → stored tenant-scoped →
+  confirmed in chat. Failed validation re-prompts in-flow, not out-of-band.
+- Flows require Meta business verification and maintained message quality (operational
+  prerequisites, tracked in ADR-0004's Meta-side requirements).
+
+## Consequences
+
+- Support is a product feature, not a procurement: the conversation log is tenant data
+  under our tenancy model (ADR-0002), the chatbot escalates per ADR-0005, and every
+  support exchange is auditable like the rest of the domain.
+- Near-zero marginal cost and no new processors at launch.
+- The Chatwoot step-2 is a deliberate, pre-agreed expansion path — the migration is
+  data-shaped (conversations out of our log into Chatwoot), so the in-product version
+  must keep conversations exportable from day one.
