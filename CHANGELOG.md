@@ -22,6 +22,9 @@ breaking changes as well, marked **Breaking** below.
   TypeScript reframed as a vendor-lock-free framework investigation (TanStack Start,
   Remix/RR7, Hono, NestJS). New comparison table added; no real blocker found for the
   founder's Elixir-leaning gut decision.
+- Founder constraint recorded: the JVM candidate is **Kotlin-only, Java excluded**
+  (LLM-corpus argument: Java corpus aging for AI-assisted work, Kotlin large, current
+  and K2-native; plus founder preference).
 
 - Project scope defined in README.md: the SaaS rewrite of pocket-cfo — what it does in
   principle, and the major adaptations (multi-tenant safety, database instead of git data

@@ -108,15 +108,23 @@ In rough priority order — the product's shape, not the implementer's preferenc
     domain with Claude Code / Tidewave and judge) belongs in the decision follow-ups.
     Tidewave mitigates on the runtime/feedback side regardless.
 
-### B. Kotlin + Spring Boot 4 + PostgreSQL + React/Angular
+### B. Kotlin + Spring Boot 4 + PostgreSQL + React/Angular — Kotlin only, Java excluded
 
-- **Profile fit (5/5):** the 5★ core stack, certified, deepest experience. And the
-  founder's question — "aren't we on Spring Boot 4 now?" — is right, and it matters:
-  Spring Boot 4.0 (November 2025) rebased on Spring Framework 7 with a **Kotlin 2.2
-  baseline** (K2 compiler), and **Spring AI 2.0 went GA in June 2026** with dedicated
-  MCP Server Boot Starters and MCP annotations. The AI/agent story that used to be
-  Java's weak spot is now first-class and superbly documented. The runtime LLM
-  integration (chatbot, MCP surface) would be *easier* here than anywhere else.
+**Founder constraint (2026-10, critical):** this candidate is **Kotlin, never Java**. If
+the JVM wins at all, it wins as Kotlin. Rationale: the founder's LLM assessment — the
+Java training corpus is showing its age for AI-assisted work, while Kotlin's corpus is
+large (Android-driven), current, and K2-native — and the founder's clear preference.
+Spring Boot 4 makes this clean: it rebased on a **Kotlin 2.2 baseline** with K2 compiler
+support, ships a first-class `kotlinx-serialization` starter, and the Spring AI 2.0
+surfaces (chatbot, MCP server starters, annotations) are usable idiomatically from
+Kotlin. Java interop remains a safety net, not the working mode.
+
+- **Profile fit (5/5):** the 5★ core stack in its preferred dialect, certified, deepest
+  experience; and the founder's question — "aren't we on Spring Boot 4 now?" — is
+  right, and it matters: **Spring AI 2.0 went GA in June 2026** with dedicated MCP
+  Server Boot Starters and MCP annotations. The AI/agent story that used to be the JVM's
+  weak spot is now first-class and superbly documented. The runtime LLM integration
+  (chatbot, MCP surface) would be *easier* here than anywhere else.
 - **Product fit (3/5):** everything exists (Spring Security OAuth2 is superb, webhooks
   fine, Spring AI 2.0 for the chatbot) but the UI story is unchanged: the admin portal
   becomes a second frontend build with a second language, doubling the solo surface.
@@ -127,7 +135,8 @@ In rough priority order — the product's shape, not the implementer's preferenc
 - **Solo ops (2.5/5):** JVM memory, Kubernetes muscle memory pulls toward infra weight;
   two deployables (API + SPA) minimum; iteration slower per feature.
 - **Ecosystem (5/5):** unmatched — now explicitly including the LLM/agent axis
-  (Spring AI 2.0 GA, MCP starters, MCP Java SDK co-authored by Spring).
+  (Spring AI 2.0 GA, MCP starters, MCP Java SDK — consumed from Kotlin; Android-scale
+  Kotlin corpus for AI-assisted coding).
 - **Longevity (5/5):** enterprise-forever.
 - **Weighted score: ≈ 3.9** (LLM-support gains bought by the update, solo-ops and
   two-surface costs unchanged)
