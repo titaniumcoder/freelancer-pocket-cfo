@@ -30,8 +30,9 @@ This is a major rewrite. The single-tenant, git-as-database design of the origin
 a multi-tenant SaaS product. Concretely:
 
 - **Multi-tenant SaaS, safe by construction.** Tenancy isolation is a core design
-  constraint from day one, not bolted on: every read and write path is tenant-scoped, and
-  cross-tenant access must be structurally impossible, not merely forbidden.
+  constraint from day one, not bolted on: the scoped context layer is the only data
+  access surface, every query is tenant-scoped by construction (Phoenix scopes), and
+  cross-tenant access is proven impossible by CI tests, not hoped away.
 - **A database instead of a git data repository.** The original's two-repo split (code
   repo + private data repo, audited via git commits) is replaced by a real database as the
   main channel. Auditability and revertibility — the strengths of the git design — must be
